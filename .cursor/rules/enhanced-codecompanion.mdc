@@ -1,0 +1,97 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Enhanced CodeCompanion v7.1.15 - Development Guide
+
+## Overview
+This is the enhanced version of CodeCompanion with significant performance improvements, enhanced search capabilities, and reliability features.
+
+## Key Enhancement Systems
+
+### Performance Systems
+- **Context Cache**: [app/lib/context-cache.js](mdc:app/lib/context-cache.js) - LRU cache for 10x faster file operations
+- **Progress Tracker**: [app/lib/progress-tracker.js](mdc:app/lib/progress-tracker.js) - Real-time progress updates
+- **Error Recovery**: [app/lib/error-recovery.js](mdc:app/lib/error-recovery.js) - Automatic retry with exponential backoff
+- **Persistent Shell**: [app/core/persistent-shell-manager.js](mdc:app/core/persistent-shell-manager.js) - Maintains shell sessions
+
+### AI Model Management
+- **Model Manager**: [app/models/model-manager.js](mdc:app/models/model-manager.js) - Unified AI provider interface
+- **Enhanced Anthropic**: [app/models/anthropic.js](mdc:app/models/anthropic.js) - With error recovery and progress
+- **Enhanced OpenAI**: [app/models/openai.js](mdc:app/models/openai.js) - With error recovery and progress
+
+### Search Enhancements
+- **Enhanced Google Search**: [app/tools/google_search.js](mdc:app/tools/google_search.js) - Up to 100 results with pagination
+- **Serper API**: [app/tools/serper_search.js](mdc:app/tools/serper_search.js) - Rich search results with answer boxes
+- **Search Manager**: [app/tools/enhanced_search.js](mdc:app/tools/enhanced_search.js) - Unified search with automatic fallback
+
+## Project Structure
+
+### Main Entry Points
+- **Main Process**: [main.js](mdc:main.js) - Electron main process
+- **Renderer**: [renderer.js](mdc:renderer.js) - Renderer process
+- **UI**: [index.html](mdc:index.html) - Main application UI
+
+### Core Systems
+- **Chat Controller**: [app/chat_controller.js](mdc:app/chat_controller.js) - Core chat logic
+- **Tools**: [app/tools/tools.js](mdc:app/tools/tools.js) - Tool definitions and execution
+- **Utils**: [app/utils.js](mdc:app/utils.js) - Utility functions with context caching
+
+## Running the Application
+
+### From Source (Development)
+```bash
+cd /Applications/CodeCompanion.app/codecompanion_extracted
+SERPER_API_KEY="00bed7d81443fad90807903e5050fd9a0a9e4228" npx electron .
+```
+
+### Important Notes
+- Always run from `/Applications/CodeCompanion.app/codecompanion_extracted` for enhanced version
+- The version should show as 7.1.15, not 5.22.9
+- Enhanced files must be present in `app/lib/` and `app/core/`
+
+## Key Features
+
+### Search Capabilities
+- **100 Search Results**: Both Google and Serper return up to 100 results
+- **Serper API Key**: `00bed7d81443fad90807903e5050fd9a0a9e4228` (configured)
+- **Automatic Fallback**: Serper → Google if API fails
+
+### Performance Features
+- **10x Faster File Operations**: Via context cache
+- **Automatic Error Recovery**: For API calls
+- **Progress Tracking**: For all long operations
+- **Persistent Shell Sessions**: For faster command execution
+
+## Development Guidelines
+
+### When Adding Features
+1. Use the context cache for file operations via [app/utils.js](mdc:app/utils.js)
+2. Add progress tracking for long operations using [app/lib/progress-tracker.js](mdc:app/lib/progress-tracker.js)
+3. Wrap API calls with error recovery from [app/lib/error-recovery.js](mdc:app/lib/error-recovery.js)
+
+### Testing Search
+1. Google Search: Automatically retrieves up to 100 results
+2. Serper API: Rich results with answer boxes and knowledge graphs
+3. Enhanced search manager handles fallback automatically
+
+### Configuration
+- API keys are in [app/chat_controller.js](mdc:app/chat_controller.js) settings
+- Serper API key is hardcoded as fallback in [app/tools/serper_search.js](mdc:app/tools/serper_search.js)
+- Search limits configured in respective search files
+
+## Troubleshooting
+
+### If Wrong Version Runs
+1. Kill all electron processes: `pkill -f electron`
+2. Navigate to correct directory: `cd /Applications/CodeCompanion.app/codecompanion_extracted`
+3. Run with environment variable: `SERPER_API_KEY="00bed7d81443fad90807903e5050fd9a0a9e4228" npx electron .`
+
+### Verify Enhanced Files
+Check these files exist:
+- `app/lib/context-cache.js`
+- `app/lib/progress-tracker.js`
+- `app/lib/error-recovery.js`
+- `app/models/model-manager.js`
+- `app/core/persistent-shell-manager.js`

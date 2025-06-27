@@ -1,0 +1,2 @@
+- Only use bootsrap classes for UI, no inline styles
+- this is inside of electron app
