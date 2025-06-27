@@ -261,6 +261,33 @@ async function shell({ command, background }) {
   let commandResult;
   let errorAnalysis = null;
   
+  // Ensure we're in the correct working directory
+  await chatController.terminalSession.getCurrentDirectory();
+  
+  // WORKAROUND: If we're in /workspace, try to detect the user's actual directory
+  if (chatController.agent.currentWorkingDir === '/workspace' || 
+      chatController.agent.currentWorkingDir === process.cwd()) {
+    console.warn('[Terminal] Detected execution in app directory, attempting to find user directory...');
+    
+    // Check if there's a project open
+    if (!chatController.agent.projectController.currentProject) {
+      // Try to detect from the command itself (e.g., if it references a path)
+      // This is a heuristic approach
+      const pathMatch = command.match(/(?:^|\s)(?:\.\/|\/home\/[^\/]+\/|~\/)([\w\-\/\.]+)/);
+      if (pathMatch) {
+        const detectedPath = pathMatch[1];
+        console.log(`[Terminal] Detected potential user path from command: ${detectedPath}`);
+      }
+      
+      // For now, return an error message to the user
+      return `Error: No project directory is open. Terminal commands are executing in the application directory (${process.cwd()}) instead of your working directory.\n\n` +
+             `To fix this:\n` +
+             `1. Open your project directory in CodeCompanion\n` +
+             `2. Or specify the full path in your commands\n\n` +
+             `Current directory: ${chatController.agent.currentWorkingDir}`;
+    }
+  }
+  
   if (background === true) {
     chatController.terminalSession.executeShellCommand(command);
     await new Promise((resolve) => setTimeout(resolve, 1000));

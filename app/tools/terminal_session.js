@@ -239,8 +239,10 @@ class TerminalSession {
     }
   }
 
-  executeCommandWithoutOutput(command) {
-    ipcRenderer.send('execute-command', command);
+  executeCommandWithoutOutput(command, workingDir = null) {
+    // Pass the working directory if provided
+    const options = workingDir ? { cwd: workingDir } : {};
+    ipcRenderer.send('execute-command', command, options);
   }
 
   getTerminalOutput(command) {
