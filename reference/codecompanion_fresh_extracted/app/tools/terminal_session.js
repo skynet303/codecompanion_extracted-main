@@ -24,11 +24,6 @@ class TerminalSession {
     this.sendToChatButton = null;
     this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
     
-    // Initialize missing properties that were causing the "push" error
-    this.terminalSessionDataListeners = [];
-    this.endMarker = '<<<COMMAND_END>>>';
-    this.lastCommandAnalysis = null;
-    
     // Initialize real-time monitor
     this.realtimeMonitor = new RealtimeTerminalMonitor();
     
@@ -275,7 +270,7 @@ class TerminalSession {
       this.realtimeMonitor.startMonitoring(commandId, command);
       
       const executeTimeStamp = Date.now();
-      this.terminal.write(command + '; echo "' + this.endMarker + '"\r');
+      this.terminal.write(command + '\r');
 
       const dataListener = (data) => {
         const chunk = data.toString();
@@ -339,27 +334,6 @@ class TerminalSession {
 
   removeASCII(data) {
     return data ? data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '') : '';
-  }
-
-  postProcessOutput(output, command, startTime) {
-    // Remove terminal control characters and clean up output
-    let cleanOutput = this.removeASCII(output);
-    
-    // Remove the command echo from the beginning if present
-    if (cleanOutput.startsWith(command)) {
-      cleanOutput = cleanOutput.substring(command.length);
-    }
-    
-    // Remove leading/trailing whitespace
-    cleanOutput = cleanOutput.trim();
-    
-    // Add execution time info
-    const duration = Date.now() - startTime;
-    if (duration > 1000) {
-      console.log(`Command '${command}' took ${duration}ms to execute`);
-    }
-    
-    return cleanOutput;
   }
 
   async navigateToDirectory(dir) {

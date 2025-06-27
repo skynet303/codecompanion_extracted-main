@@ -138,6 +138,17 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - New dedicated web research item type
   - Proper output format for web findings
 
+### 8. **CRITICAL Terminal Bug Fix** 🐛➡️✅
+- **Problem**: `Cannot read properties of undefined (reading 'push')` error when executing shell commands
+- **Root Cause**: Missing property initialization in `TerminalSession` constructor
+- **Fixed Properties**:
+  - `this.terminalSessionDataListeners = []` - Now properly initialized as array
+  - `this.endMarker = '<<<COMMAND_END>>>'` - Command completion marker
+  - `this.lastCommandAnalysis = null` - Command analysis storage
+- **Added Missing Method**: `postProcessOutput()` for cleaning terminal output
+- **Impact**: All terminal commands (pwd, ls, cd, etc.) now work without errors
+- **Status**: ✅ RESOLVED - Terminal functionality fully restored
+
 ### Performance Optimizations
 - Context caching reduces file I/O by 90%
 - Persistent shells eliminate spawn overhead
@@ -203,10 +214,182 @@ To enable Serper API (recommended for best search results):
 ## Modified Files
 - **main.js** - Modified to handle missing node-pty gracefully (terminal features optional)
 - **main-backup.js** - Backup of original main.js
+- **app/tools/terminal_session.js** - FIXED: Critical bug causing "Cannot read properties of undefined (reading 'push')" error
 
 ## Windows Setup Status
 ✅ Node.js v22.17.0 installed
 ✅ Git v2.50.0 installed
 ✅ Git configured with default user settings
 ✅ App modified to run without terminal features
-✅ Multiple launcher scripts created for different scenarios 
+✅ Multiple launcher scripts created for different scenarios
+
+## Linux Setup (NEW)
+- **run-linux.sh** - Simple launcher script for Linux
+- **launch-enhanced.sh** - Enhanced launcher with verbose output
+# CodeCompanion Project Map
+
+## Core Entry Points
+
+### Main Application (`main.js`)
+- **Purpose**: Main Electron process entry point
+- **Functions**: 
+  - `createWindow()`: Creates the main application window
+  - `createProjectManagerWindow()`: Handles project selection window
+  - IPC handlers for various operations
+- **How to run**: `npm start` or `electron .`
+
+### Background Task Manager (`app/background_task.js`)
+- **Purpose**: Manages background operations and task processing
+- **Key Functions**:
+  - `executeTask()`: Runs background tasks safely
+  - `submitTask()`: Queues new tasks for execution
+  - `getBackgroundState()`: Returns current task status
+- **Used in**: Chat operations, file processing
+
+### Persistent Shell Manager (`app/core/persistent-shell-manager.js`)
+- **Purpose**: Manages persistent shell sessions for terminal operations
+- **Key Functions**:
+  - `executeCommand()`: Executes commands in persistent shell
+  - `createShell()`: Creates new shell instance
+  - `getShellOutput()`: Retrieves command output
+- **Used in**: Terminal operations, command execution
+
+## Chat & AI Components
+
+### Chat Controller (`app/chat_controller.js`)
+- **Purpose**: Main controller for chat functionality
+- **Key Functions**:
+  - `handleUserMessage()`: Processes user input
+  - `sendToAI()`: Manages AI communication
+  - `updateChatHistory()`: Maintains conversation history
+- **Used in**: Main chat interface
+
+### Agent System (`app/chat/agent.js`)
+- **Purpose**: AI agent logic and response handling
+- **Key Functions**:
+  - `processMessage()`: Main message processing
+  - `executeTools()`: Tool execution management
+  - `generateResponse()`: Response generation
+- **Used in**: Chat processing pipeline
+
+### Planner (`app/chat/planner/planner.js`)
+- **Purpose**: Task planning and execution strategies
+- **Key Functions**:
+  - `createPlan()`: Generates execution plans
+  - `executePlan()`: Runs planned tasks
+  - `validatePlan()`: Ensures plan validity
+- **Used in**: Complex task execution
+
+## Context Management
+
+### Context Builder (`app/chat/context/contextBuilder.js`)
+- **Purpose**: Builds context for AI interactions
+- **Key Functions**:
+  - `buildContext()`: Assembles relevant context
+  - `addFiles()`: Includes file content
+  - `optimizeContext()`: Reduces context size
+- **Used in**: All AI interactions
+
+### Context Files (`app/chat/context/contextFiles.js`)
+- **Purpose**: Manages file-based context
+- **Key Functions**:
+  - `getFileContext()`: Retrieves file content
+  - `updateFileContext()`: Updates context with changes
+  - `clearFileContext()`: Removes file from context
+- **Used in**: File operations, code editing
+
+## Tools & Utilities
+
+### Terminal Session (`app/tools/terminal_session.js`)
+- **Purpose**: Terminal command execution
+- **Key Functions**:
+  - `executeCommand()`: Runs terminal commands
+  - `getCommandOutput()`: Retrieves results
+  - `validateCommand()`: Security checks
+- **Used in**: System operations, command execution
+
+### Code Embeddings (`app/tools/code_embeddings.js`)
+- **Purpose**: Semantic code search using embeddings
+- **Key Functions**:
+  - `generateEmbeddings()`: Creates code embeddings
+  - `searchSimilar()`: Finds similar code
+  - `updateEmbeddings()`: Refreshes embedding database
+- **Used in**: Code search, relevant file finding
+
+### Apply Changes (`app/tools/apply_changes.js`)
+- **Purpose**: Applies code modifications
+- **Key Functions**:
+  - `applyEdit()`: Applies file edits
+  - `validateChanges()`: Ensures changes are valid
+  - `rollbackChanges()`: Reverts if needed
+- **Used in**: Code editing operations
+
+## Error Handling & Recovery
+
+### Error Recovery (`app/lib/error-recovery.js`)
+- **Purpose**: Handles errors and recovery strategies
+- **Key Functions**:
+  - `handleError()`: Main error handler
+  - `recoverFromError()`: Attempts recovery
+  - `logError()`: Error logging
+- **Used in**: Throughout the application
+
+### Terminal Error Monitor (`app/lib/terminal-error-monitor.js`)
+- **Purpose**: Monitors terminal for errors
+- **Key Functions**:
+  - `detectError()`: Identifies terminal errors
+  - `suggestFix()`: Provides error solutions
+  - `autoRecover()`: Automatic recovery attempts
+- **Used in**: Terminal operations
+
+## UI Components
+
+### Code Block (`app/components/code_block.js`)
+- **Purpose**: Code display and syntax highlighting
+- **Key Functions**:
+  - `renderCode()`: Displays formatted code
+  - `handleCopy()`: Copy functionality
+  - `highlightSyntax()`: Syntax highlighting
+- **Used in**: Chat interface, code display
+
+## Model Integration
+
+### Model Manager (`app/models/model-manager.js`)
+- **Purpose**: Manages AI model connections
+- **Key Functions**:
+  - `selectModel()`: Choose active model
+  - `sendRequest()`: Send to AI provider
+  - `handleResponse()`: Process AI responses
+- **Used in**: All AI interactions
+
+## Running the Application
+
+1. **Development Mode**: 
+   - `npm start` - Starts Electron app
+   - `npm run dev` - Development with auto-reload
+
+2. **Scripts Available**:
+   - `run-app.ps1` - Windows PowerShell launcher
+   - `launch-enhanced.sh` - Linux launcher with environment setup
+   - `run-linux.sh` - Basic Linux launcher
+
+3. **Environment Requirements**:
+   - Node.js 20.19.3
+   - Electron
+   - Git 2.34.1
+   - Ripgrep 13.0.0
+
+## External Tools Installed
+
+### Claude Code (v1.0.35)
+- **Installation**: `npm install -g @anthropic-ai/claude-code`
+- **Configuration**: Installed in `~/.npm-global` to avoid permission issues
+- **Usage**: Run `claude` in any project directory to start
+- **Requirements**: Node.js 18+, Git, Ripgrep (optional)
+- **Note**: PATH must include `~/.npm-global/bin`
+
+## Recent Updates
+- Configured npm to use user-local directory for global packages
+- Installed ripgrep for enhanced search functionality
+- Successfully installed Claude Code v1.0.35
+- PATH updated in ~/.bashrc to include npm global bin directory 

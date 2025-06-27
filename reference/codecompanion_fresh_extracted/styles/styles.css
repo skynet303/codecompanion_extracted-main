@@ -1,0 +1,68 @@
+html {
+  font-size: 14px;
+}
+
+.collapse-icon {
+  transition: transform 0.3s ease;
+}
+
+.collapsed .collapse-icon {
+  transform: rotate(-90deg);
+}
+
+.select-custom-width {
+  width: 160px;
+}
+
+pre {
+  min-height: 40px;
+  padding: 1rem;
+}
+
+.with-code-block {
+  overflow: auto;
+  position: relative;
+}
+
+.xterm {
+  padding: 1rem;
+}
+
+.autosize-textarea {
+  max-height: 30vh;
+  overflow-x: hidden !important;
+}
+
+#resize_handle {
+  width: 3px;
+  background-color: var(--bs-border-color);
+}
+
+#resize_handle:hover {
+  background-color: var(--bs-link-hover-color);
+}
+
+pre {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+@font-face {
+  font-family: 'FiraCodeNerdFont';
+  src: url('./fonts/FiraCodeNerdFont-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'FiraCodeNerdFont';
+  src: url('./fonts/FiraCodeNerdFont-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+[data-bs-theme="dark"] {
+  --bs-body-bg: #111111;
+  --bs-dark-bg-subtle: #1a1a1a;
+  --bs-body-bg-rgb: 17, 17, 17;
+}

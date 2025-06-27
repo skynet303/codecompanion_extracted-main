@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CodeCompanion
+Comment=AI Coding Assistant
+Icon=/home/vm/codecompanion_extracted-main/styles/icon.png
+Exec=/home/vm/codecompanion_extracted-main/launch-enhanced.sh
+Terminal=false
+Categories=Development;IDE;
+StartupNotify=true 

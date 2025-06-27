@@ -15,16 +15,7 @@ app.setName('CodeCompanion.AI');
 // const { autoUpdater } = require('electron-updater'); // REMOVED: Auto-updater disabled
 const path = require('path');
 const ElectronStore = require('electron-store');
-
-// Try to load node-pty, but don't crash if it fails
-let pty = null;
-try {
-  pty = require('node-pty');
-} catch (error) {
-  console.error('Warning: node-pty not available. Terminal features will be disabled.');
-  console.error('To fix: run "npm install @electron/rebuild && npx electron-rebuild"');
-}
-
+const pty = require('node-pty');
 const { debounce } = require('lodash');
 // const { initialize } = require('@aptabase/electron/main'); // REMOVED: DAU tracking disabled
 const WindowManager = require('./app/window_manager');
@@ -334,11 +325,6 @@ ipcMain.on('open-directory', (event) => {
 // Shell
 
 ipcMain.on('start-shell', (event, args) => {
-  if (!pty) {
-    event.sender.send('shell-error', 'Terminal not available. Please rebuild native modules.');
-    return;
-  }
-
   if (terminal) {
     terminal.kill();
     terminal = null;
@@ -374,16 +360,7 @@ ipcMain.on('write-shell', (event, args) => {
   }
 });
 
-ipcMain.on('execute-command', (event, command, options = {}) => {
-  if (!pty) {
-    event.sender.send('command-output', 'Terminal not available. Please rebuild native modules.\n');
-    event.sender.send('command-exit', 1);
-    return;
-  }
-
-  // Use provided working directory or fall back to process.cwd()
-  const workingDir = options.cwd || process.cwd();
-
+ipcMain.on('execute-command', (event, command) => {
   let shell, shellArgs;
 
   if (process.platform === 'win32') {
@@ -396,7 +373,7 @@ ipcMain.on('execute-command', (event, command, options = {}) => {
 
   const tempTerminal = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',
-    cwd: workingDir,
+    cwd: process.cwd(),
     env: process.env,
   });
 
