@@ -194,6 +194,51 @@ async function previewMessageMapping(functionName, args, toolId) {
   return mapping[functionName];
 }
 
+/**
+ * Execute command for background agents with proper working directory handling
+ */
+async function executeBackgroundCommand(command) {
+  return new Promise((resolve, reject) => {
+    const { ipcRenderer } = require('electron');
+    let output = '';
+    let hasExited = false;
+    
+    const outputHandler = (event, data) => {
+      output += data;
+    };
+    
+    const exitHandler = (event, exitCode) => {
+      if (!hasExited) {
+        hasExited = true;
+        ipcRenderer.removeListener('command-output', outputHandler);
+        ipcRenderer.removeListener('command-exit', exitHandler);
+        
+        if (exitCode === 0) {
+          resolve(output);
+        } else {
+          resolve(`Command failed with exit code ${exitCode}:\n${output}`);
+        }
+      }
+    };
+    
+    ipcRenderer.on('command-output', outputHandler);
+    ipcRenderer.on('command-exit', exitHandler);
+    
+    // Send command with current working directory
+    chatController.terminalSession.executeCommandWithoutOutput(command);
+    
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (!hasExited) {
+        hasExited = true;
+        ipcRenderer.removeListener('command-output', outputHandler);
+        ipcRenderer.removeListener('command-exit', exitHandler);
+        reject(new Error('Command execution timeout after 30 seconds'));
+      }
+    }, 30000);
+  });
+}
+
 async function fileOperation({ operation, targetFile, content, isEntireFileContentProvided }) {
   switch (operation) {
     case 'create':
@@ -261,12 +306,26 @@ async function shell({ command, background }) {
   let commandResult;
   let errorAnalysis = null;
   
+  // Check if we're in a background agent context
+  const isBackgroundAgent = typeof window !== 'undefined' && window.isBackgroundAgent;
+  
   if (background === true) {
     chatController.terminalSession.executeShellCommand(command);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     return 'Command started in the background';
   } else {
-    commandResult = await chatController.terminalSession.executeShellCommand(command);
+    try {
+      // Use executeCommandWithoutOutput for background agents to avoid terminal UI issues
+      if (isBackgroundAgent) {
+        // For background agents, use a simpler execution path
+        commandResult = await executeBackgroundCommand(command);
+      } else {
+        commandResult = await chatController.terminalSession.executeShellCommand(command);
+      }
+    } catch (error) {
+      console.error('Command execution error:', error);
+      commandResult = `Error executing command: ${error.message}`;
+    }
   }
   
   // Analyze the command output for errors

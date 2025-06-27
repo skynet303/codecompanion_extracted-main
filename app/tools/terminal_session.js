@@ -24,6 +24,10 @@ class TerminalSession {
     this.sendToChatButton = null;
     this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
     
+    // Initialize missing properties
+    this.terminalSessionDataListeners = [];
+    this.endMarker = '<<<END_COMMAND_OUTPUT>>>';
+    
     // Initialize real-time monitor
     this.realtimeMonitor = new RealtimeTerminalMonitor();
     
@@ -235,7 +239,9 @@ class TerminalSession {
   }
 
   executeCommandWithoutOutput(command) {
-    ipcRenderer.send('execute-command', command);
+    ipcRenderer.send('execute-command', command, { 
+      cwd: chatController.agent.currentWorkingDir 
+    });
   }
 
   getTerminalOutput(command) {
@@ -270,7 +276,10 @@ class TerminalSession {
       this.realtimeMonitor.startMonitoring(commandId, command);
       
       const executeTimeStamp = Date.now();
+      
+      // Write command and end marker
       this.terminal.write(command + '\r');
+      this.terminal.write(`echo "${this.endMarker}"\r`);
 
       const dataListener = (data) => {
         const chunk = data.toString();
@@ -279,7 +288,7 @@ class TerminalSession {
         // Process output through real-time monitor
         this.realtimeMonitor.processOutput(commandId, chunk);
         
-        if (data.includes(this.endMarker)) {
+        if (output.includes(this.endMarker)) {
           this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
             (listener) => listener !== dataListener
           );
@@ -311,6 +320,26 @@ class TerminalSession {
         reject(new Error('Command execution timeout'));
       }, 30000); // 30 second timeout
     });
+  }
+  
+  /**
+   * Post-process command output to clean up prompts and formatting
+   */
+  postProcessOutput(output, command, executeTimeStamp) {
+    // Remove the command itself from the output
+    const commandIndex = output.indexOf(command);
+    if (commandIndex !== -1) {
+      output = output.substring(commandIndex + command.length);
+    }
+    
+    // Remove any prompt markers
+    output = output.replace(new RegExp(FIXED_PROMPT, 'g'), '');
+    
+    // Clean up extra whitespace and newlines
+    output = output.trim();
+    
+    // Handle timestamp-based filtering if needed
+    return output;
   }
   
   /**

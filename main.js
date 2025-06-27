@@ -374,7 +374,7 @@ ipcMain.on('write-shell', (event, args) => {
   }
 });
 
-ipcMain.on('execute-command', (event, command) => {
+ipcMain.on('execute-command', (event, command, options = {}) => {
   if (!pty) {
     event.sender.send('command-output', 'Terminal not available. Please rebuild native modules.\n');
     event.sender.send('command-exit', 1);
@@ -391,9 +391,12 @@ ipcMain.on('execute-command', (event, command) => {
     shellArgs = ['-l', '-c', command];
   }
 
+  // Use provided cwd or fall back to process.cwd()
+  const workingDir = options.cwd || process.cwd();
+
   const tempTerminal = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',
-    cwd: process.cwd(),
+    cwd: workingDir,
     env: process.env,
   });
 
