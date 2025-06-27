@@ -267,6 +267,14 @@ class TerminalSession {
   }
 
   async executeShellCommand(command) {
+    // Ensure terminal is created before executing commands
+    if (!this.terminal) {
+      console.warn('[Terminal] Terminal not initialized, creating shell session...');
+      this.createShellSession();
+      // Wait a bit for terminal to initialize
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
     return new Promise((resolve, reject) => {
       let output = '';
       

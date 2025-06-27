@@ -1,4 +1,5 @@
 const fs = require('graceful-fs');
+const os = require('os');
 const ProjectController = require('../project_controller');
 const { toolDefinitions, previewMessageMapping, getCodeToReplace } = require('../tools/tools');
 const { isFileExists, isFileEmpty, normalizedFilePath } = require('../utils');
@@ -14,7 +15,7 @@ const TOOL_CALL_FRIENDLY_NAMES = {
 
 class Agent {
   constructor(currentProject) {
-    this.currentWorkingDir = os.homedir();
+    this.currentWorkingDir = process.cwd();
     this.projectState = {};
     this.projectController = new ProjectController(currentProject);
     this.userDecision = null;

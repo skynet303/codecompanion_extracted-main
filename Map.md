@@ -138,16 +138,39 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - New dedicated web research item type
   - Proper output format for web findings
 
-### 8. **CRITICAL Terminal Bug Fix** 🐛➡️✅
-- **Problem**: `Cannot read properties of undefined (reading 'push')` error when executing shell commands
-- **Root Cause**: Missing property initialization in `TerminalSession` constructor
-- **Fixed Properties**:
-  - `this.terminalSessionDataListeners = []` - Now properly initialized as array
-  - `this.endMarker = '<<<COMMAND_END>>>'` - Command completion marker
-  - `this.lastCommandAnalysis = null` - Command analysis storage
-- **Added Missing Method**: `postProcessOutput()` for cleaning terminal output
-- **Impact**: All terminal commands (pwd, ls, cd, etc.) now work without errors
-- **Status**: ✅ RESOLVED - Terminal functionality fully restored
+### 8. **CRITICAL Terminal Bug Fixes** 🐛➡️✅
+- **Problems Fixed**:
+  1. `Cannot read properties of undefined (reading 'push')` error when executing shell commands
+  2. Terminal not created on startup - only created when clearing chat
+  3. Working directory always defaulted to home directory instead of launch directory
+  4. Missing `os` module import in Agent class
+
+- **Root Causes & Fixes**:
+  1. **Missing Property Initialization** (`app/tools/terminal_session.js`):
+     - Added `this.terminalSessionDataListeners = []` - Now properly initialized as array
+     - Added `this.endMarker = '<<<COMMAND_END>>>'` - Command completion marker
+     - Added `this.lastCommandAnalysis = null` - Command analysis storage
+     - Added `postProcessOutput()` method for cleaning terminal output
+  
+  2. **Terminal Not Auto-Created** (`app/tools/terminal_session.js`):
+     - Added check in `executeShellCommand()` to create terminal if not exists
+     - Terminal now auto-initializes on first command execution
+  
+  3. **Wrong Working Directory** (`app/chat/agent.js`):
+     - Changed from `this.currentWorkingDir = os.homedir()` 
+     - To: `this.currentWorkingDir = process.cwd()`
+     - Now uses the directory where CodeCompanion was launched
+  
+  4. **Missing Import** (`app/chat/agent.js`):
+     - Added `const os = require('os');` import statement
+
+- **Impact**: 
+  - All terminal commands (pwd, ls, cd, etc.) work without errors
+  - CodeCompanion respects the launch directory (e.g., ~/Downloads/test)
+  - Terminal available immediately without needing to clear chat first
+  
+- **Testing**: Created `test_codecompanion_fixes.js` to verify all fixes
+- **Status**: ✅ FULLY RESOLVED - All terminal issues fixed
 
 ### Performance Optimizations
 - Context caching reduces file I/O by 90%
