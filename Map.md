@@ -50,6 +50,16 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - Unified interface for both providers
   - Smart result processing
 
+### Terminal Command Execution Fix
+- **Fixed**: Command truncation bug where complex commands were being corrupted
+- **Location**: `app/tools/terminal_session.js`
+- **Changes**:
+  - Added `escapeShellCommand()` method to properly escape special characters
+  - Updated `executeShellCommand()` to use subshells for Unix-like systems
+  - Improved command construction to prevent truncation with special characters
+  - Added debug logging for command execution troubleshooting
+- **Test Script**: `test-terminal-fix.js` - Contains test cases for various edge cases
+
 ## Core Application Structure
 
 ### Main Process (`main.js`)

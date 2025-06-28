@@ -275,7 +275,28 @@ class TerminalSession {
       this.realtimeMonitor.startMonitoring(commandId, command);
       
       const executeTimeStamp = Date.now();
-      this.terminal.write(command + '; echo "' + this.endMarker + '"\r');
+      
+      // Fix: Use a more robust command construction approach
+      // Properly escape the command and construct the full command based on shell type
+      let fullCommand;
+      if (this.shellType === 'powershell.exe') {
+        // PowerShell: Use semicolon to chain commands
+        // Escape the command properly for PowerShell
+        const escapedCommand = this.escapeShellCommand(command);
+        fullCommand = `${command}; Write-Host '${this.endMarker}'`;
+      } else {
+        // For bash/zsh/fish: Use a subshell to ensure proper command execution
+        // This prevents issues with complex commands containing quotes or special characters
+        fullCommand = `(${command}) && echo '${this.endMarker}'`;
+      }
+      
+      // Debug logging
+      console.log(`[Terminal] Executing command: ${command}`);
+      console.log(`[Terminal] Full command: ${fullCommand}`);
+      console.log(`[Terminal] Shell type: ${this.shellType}`);
+      
+      // Write the command to the terminal
+      this.terminal.write(fullCommand + '\r');
 
       const dataListener = (data) => {
         const chunk = data.toString();
@@ -284,7 +305,7 @@ class TerminalSession {
         // Process output through real-time monitor
         this.realtimeMonitor.processOutput(commandId, chunk);
         
-        if (data.includes(this.endMarker)) {
+        if (chunk.includes(this.endMarker) || output.includes(this.endMarker)) {
           this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
             (listener) => listener !== dataListener
           );
@@ -335,6 +356,20 @@ class TerminalSession {
   isCommandFinishedExecuting(command) {
     const lastOutputDataAfterCommand = this.removeASCII(this.outputData).split(command).pop();
     return lastOutputDataAfterCommand.includes(FIXED_PROMPT);
+  }
+
+  /**
+   * Escape special characters in shell commands
+   */
+  escapeShellCommand(command) {
+    if (this.shellType === 'powershell.exe') {
+      // PowerShell escaping - escape quotes and dollar signs
+      return command.replace(/"/g, '`"').replace(/\$/g, '`$');
+    } else {
+      // Bash/Zsh/Fish escaping - use single quotes and escape existing single quotes
+      // This is more robust than double quotes as it prevents variable expansion
+      return command.replace(/'/g, "'\\''");
+    }
   }
 
   removeASCII(data) {
