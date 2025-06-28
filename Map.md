@@ -199,6 +199,8 @@ For a detailed map of how tools are defined, registered, and executed, see **[TO
 - Execution lifecycle and error recovery
 - Special features like parallel caching and research orchestration
 
+For an analysis of enhancement compatibility with the Planner/Research subsystem, see **[PLANNER_ENHANCEMENT_COMPATIBILITY.md](./PLANNER_ENHANCEMENT_COMPATIBILITY.md)**.
+
 ## Future Enhancements
 - Complete persistent shell integration
 - Extended caching for embeddings

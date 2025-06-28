@@ -320,3 +320,6 @@ In addition to the main agent's tool execution flow, there is a specialized sub-
 - The most important planner tool is `output`. Its purpose is to return the final, structured result of the research task.
 - Its schema is not fixed. It is dynamically generated based on the `outputFormat` defined for the specific `researchItem` being executed.
 - In its final step, the `ResearchAgent` forces the LLM to call the `output` tool, guaranteeing that the research concludes with a structured data payload rather than a simple text message. This structured data is then used to drive the next phase of the main agent's work.
+
+### Enhancement Compatibility Issues
+Many of the system enhancements were designed for the main agent flow and are not available to the Planner/Research subsystem. For a detailed analysis of which enhancements work with this subsystem and which don't, see **[PLANNER_ENHANCEMENT_COMPATIBILITY.md](./PLANNER_ENHANCEMENT_COMPATIBILITY.md)**.
