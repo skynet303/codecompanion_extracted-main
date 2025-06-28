@@ -24,9 +24,7 @@ class TerminalSession {
     this.sendToChatButton = null;
     this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
     
-    // Initialize missing properties that were causing the "push" error
-    this.terminalSessionDataListeners = [];
-    this.endMarker = '<<<COMMAND_END>>>';
+    // Initialize missing properties
     this.lastCommandAnalysis = null;
     
     // Initialize real-time monitor
@@ -266,7 +264,8 @@ class TerminalSession {
 
   async executeShellCommand(command) {
     return new Promise((resolve, reject) => {
-      let output = '';
+      // Reset outputData for this command
+      this.outputData = '';
       
       // Generate unique command ID
       const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -276,40 +275,20 @@ class TerminalSession {
       
       const executeTimeStamp = Date.now();
       
-      // Fix: Use a more robust command construction approach
-      // Properly escape the command and construct the full command based on shell type
-      let fullCommand;
-      if (this.shellType === 'powershell.exe') {
-        // PowerShell: Use semicolon to chain commands
-        // Escape the command properly for PowerShell
-        const escapedCommand = this.escapeShellCommand(command);
-        fullCommand = `${command}; Write-Host '${this.endMarker}'`;
-      } else {
-        // For bash/zsh/fish: Use a subshell to ensure proper command execution
-        // This prevents issues with complex commands containing quotes or special characters
-        fullCommand = `(${command}) && echo '${this.endMarker}'`;
-      }
-      
-      // Debug logging
-      console.log(`[Terminal] Executing command: ${command}`);
-      console.log(`[Terminal] Full command: ${fullCommand}`);
-      console.log(`[Terminal] Shell type: ${this.shellType}`);
-      
-      // Write the command to the terminal
-      this.terminal.write(fullCommand + '\r');
+      // Simply write the command to the shell
+      this.writeToShell(command + '\r');
 
-      const dataListener = (data) => {
-        const chunk = data.toString();
-        output += chunk;
+      const shellDataListener = (event, data) => {
+        this.outputData += data;
         
         // Process output through real-time monitor
-        this.realtimeMonitor.processOutput(commandId, chunk);
+        this.realtimeMonitor.processOutput(commandId, data);
         
-        if (chunk.includes(this.endMarker) || output.includes(this.endMarker)) {
-          this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-            (listener) => listener !== dataListener
-          );
-          output = output.slice(0, output.lastIndexOf(this.endMarker));
+        // Check if command is finished by looking for the prompt
+        if (this.isCommandFinishedExecuting(command)) {
+          ipcRenderer.removeListener('shell-data', shellDataListener);
+          
+          let output = this.outputData;
           output = this.postProcessOutput(output, command, executeTimeStamp);
           
           // Complete monitoring and get final analysis
@@ -322,14 +301,11 @@ class TerminalSession {
         }
       };
 
-      this.terminalSessionDataListeners.push(dataListener);
-      this.terminal.onData(dataListener);
+      ipcRenderer.on('shell-data', shellDataListener);
       
       // Timeout handling with monitoring cleanup
       setTimeout(() => {
-        this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-          (listener) => listener !== dataListener
-        );
+        ipcRenderer.removeListener('shell-data', shellDataListener);
         
         // Abort monitoring on timeout
         this.realtimeMonitor.abortMonitoring(commandId);
@@ -358,19 +334,7 @@ class TerminalSession {
     return lastOutputDataAfterCommand.includes(FIXED_PROMPT);
   }
 
-  /**
-   * Escape special characters in shell commands
-   */
-  escapeShellCommand(command) {
-    if (this.shellType === 'powershell.exe') {
-      // PowerShell escaping - escape quotes and dollar signs
-      return command.replace(/"/g, '`"').replace(/\$/g, '`$');
-    } else {
-      // Bash/Zsh/Fish escaping - use single quotes and escape existing single quotes
-      // This is more robust than double quotes as it prevents variable expansion
-      return command.replace(/'/g, "'\\''");
-    }
-  }
+
 
   removeASCII(data) {
     return data ? data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '') : '';

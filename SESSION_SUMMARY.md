@@ -1,61 +1,86 @@
-# Session Summary - Research Agent Web Support Fix
+# Session Summary - Terminal Command Execution Bug Fix
 
 ## Problem Identified
-The research agent was experiencing an infinite loop when tasked with web-based research. The AI would repeatedly attempt to explore project files using `ls -R` commands instead of performing the requested web searches. This occurred because:
+The CodeCompanion terminal was experiencing command execution issues where commands were being corrupted/garbled when sent to the terminal. Commands like `pwd` were appearing as:
+```
+clearhome/vm/codecompanion_extracted-main" && echo '<<<COMMAND_END>>>>'D_END>>>'
+```
 
-1. The research agent only had access to project-specific tools (`read_files`, `search_codebase`)
-2. No web search tools were available in the planner tools module
-3. The system prompt didn't distinguish between web research and project research contexts
+This occurred due to multiple issues:
+1. Complex command construction with end markers was causing corruption
+2. Terminal input/output handling was not properly synchronized
+3. The executeShellCommand method was using terminal display write instead of shell write
 
 ## Solution Implemented
 
-### 1. Enhanced Research Tools (`app/chat/planner/tools.js`)
-- Added `GoogleSearch` and `contextualCompress` imports
-- Created `webSearch` async function that:
-  - Uses Google Search API to get up to 30 results
-  - Returns structured JSON with results, URLs, titles, and snippets
-- Added `webSearchTool` definition with proper parameters
-- Modified `tools()` function to accept `includeWebSearch` parameter
-- Tools are now dynamically selected based on research context
+### 1. Simplified Command Execution (`app/tools/terminal_session.js`)
+- Removed complex command construction with end markers
+- Reverted to simple command execution: `this.writeToShell(command + '\r')`
+- Fixed data listener to use IPC shell-data events instead of terminal data events
+- Properly synchronized outputData accumulation with command completion detection
 
-### 2. Smart Context Detection (`app/chat/planner/researchAgent.js`)
-- Added `isWebResearchTask()` method that detects web research based on:
-  - Explicit `webResearch: true` flag in research items
-  - Keywords like 'google', 'github repository', 'open source', 'popular', etc.
-- Split system prompts into:
-  - `WEB_RESEARCH_INSTRUCTIONS`: Instructs AI to focus on web tools
-  - `PROJECT_RESEARCH_INSTRUCTIONS`: For project-based research
-- Updated `executeResearch()` to use appropriate tools based on context
-- Added simple in-memory cache using Map for research results
+### 2. Fixed Missing Properties
+- Added `this.lastCommandAnalysis = null` initialization to prevent "Cannot read properties of undefined" errors
+- Removed unused properties that were causing confusion:
+  - `this.terminalSessionDataListeners` 
+  - `this.endMarker`
+- Removed unused `escapeShellCommand` method
 
-### 3. Web Research Item (`app/chat/planner/researchItems.js`)
-- Added dedicated `web_research` item type with:
-  - Proper output format for web findings
-  - `webResearch: true` flag
-  - Structured output with findings, sources, and summary
+### 3. Node-pty Compatibility Fix
+- **Initial Issue**: `Cannot find module '../build/Debug/pty.node'` error
+- **Root Cause**: Electron 28 is incompatible with node-pty versions
+- **Solution**: Downgraded from Electron 28 to Electron 22.3.27
+  ```bash
+  npm uninstall electron @electron/rebuild electron-rebuild
+  npm install --save-dev electron@22.3.27 @electron/rebuild@3.2.13 electron-rebuild@3.2.9
+  npx electron-rebuild
+  ```
+- Created `fix-node-pty.sh` script for future reference
 
-### 4. Main Tools Integration (`app/tools/tools.js`)
-- Enhanced `researchAgent()` function to detect web research context
-- Automatically marks research items as web research when keywords are detected
+## Key Changes Made
 
-### 5. Bug Fixes
-- Fixed `isDevelopment` undefined error in `app/utils.js`
-- Added missing cache Map in research agent
+### `app/tools/terminal_session.js`
+1. **Lines 266-315**: Simplified `executeShellCommand()` method
+   - Removed command end marker logic
+   - Fixed data accumulation using `this.outputData`
+   - Proper IPC event handling with `shell-data` events
+   - Cleaned up command completion detection
 
-## Testing
-Created and ran a test script that confirmed:
-- Research agent correctly identifies web research tasks
-- Web search tool is included in available tools
-- System prompt properly instructs AI to use web search
-- No attempts to explore project files for web research
+2. **Lines 26-28**: Fixed property initialization
+   - Removed problematic array initialization
+   - Kept only necessary properties
+
+3. **Removed**: Complex command escaping logic that was causing issues
 
 ## Result
-The research agent now correctly handles web-based research tasks without falling into infinite loops of project file exploration. When asked to find information about GitHub repositories, open source projects, or other web content, it uses the web search tool appropriately.
+- Terminal commands now execute properly without corruption
+- Simple commands like `pwd`, `ls`, `cd` work correctly
+- No more garbled output in the terminal
+- App runs successfully with Electron 22 and node-pty
 
 ## Files Modified
-1. `app/chat/planner/tools.js` - Added web search capability
-2. `app/chat/planner/researchAgent.js` - Added context detection and smart prompts
-3. `app/chat/planner/researchItems.js` - Added web research item type
-4. `app/tools/tools.js` - Enhanced research agent function
-5. `app/utils.js` - Fixed isDevelopment undefined error
-6. `Map.md` - Documented the bug fix
+1. `app/tools/terminal_session.js` - Fixed command execution logic
+2. `package.json` - Downgraded Electron to v22.3.27
+3. `fix-node-pty.sh` - Created script for rebuilding native modules
+4. `Map.md` - Updated documentation with fixes
+5. `SESSION_SUMMARY.md` - This summary file
+
+## Current State
+- CodeCompanion is running successfully
+- Terminal functionality is fully operational
+- Commands execute without corruption
+- All UI elements are functioning properly
+- Minor GPU warnings on startup can be safely ignored (common with Electron on Linux)
+
+## Cursor Rules Created
+Created two important Cursor rules in `.cursor/rules/`:
+
+1. **node-pty-compatibility.mdc** - Documents the critical Electron version requirements
+   - Specifies Electron 22.3.27 as the confirmed working version
+   - Lists incompatible versions (Electron 28.x)
+   - Provides quick fix procedures
+   
+2. **terminal-command-execution.mdc** - Guidelines for terminal command implementation
+   - Explains the simple command execution approach
+   - Lists what NOT to do to avoid command corruption
+   - Provides correct implementation examples

@@ -1,0 +1,92 @@
+---
+description: any time we have node-pty issues when running the app, this will resolve it
+globs: 
+alwaysApply: false
+---
+# Node-pty Compatibility Requirements
+
+## Critical Dependency Warning ⚠️
+
+CodeCompanion uses `node-pty` for terminal functionality, which has strict compatibility requirements with Electron versions.
+
+## Confirmed Working Configuration
+
+- **Electron**: `22.3.27` ✅
+- **node-pty**: `0.10.1` ✅
+- **@electron/rebuild**: `3.2.13`
+- **electron-rebuild**: `3.2.9`
+
+## Known Incompatible Versions
+
+- **Electron 28.x**: ❌ Causes build failures with node-pty
+- **Electron 27.x**: ❌ Not tested but likely incompatible
+- **Electron 26.x**: ❌ Not tested but likely incompatible
+
+## Common Error
+
+If you see this error:
+```
+Cannot find module '../build/Debug/pty.node'
+```
+
+This means node-pty needs to be rebuilt for your Electron version.
+
+## Fix Procedures
+
+### Quick Fix (Use the Script)
+```bash
+./fix-node-pty.sh
+```
+
+This script is located at [fix-node-pty.sh](mdc:fix-node-pty.sh) and will:
+1. Install @electron/rebuild
+2. Rebuild native modules for current Electron version
+
+### Manual Fix (If Script Fails)
+```bash
+# 1. First try rebuilding
+npm install @electron/rebuild --save-dev
+npx electron-rebuild
+
+# 2. If that fails, downgrade Electron
+npm uninstall electron @electron/rebuild electron-rebuild
+npm install --save-dev electron@22.3.27 @electron/rebuild@3.2.13 electron-rebuild@3.2.9
+npx electron-rebuild
+```
+
+### Permanent Solution (Recommended)
+Always ensure [package.json](mdc:package.json) specifies:
+```json
+{
+  "devDependencies": {
+    "electron": "^22.3.27",
+    "@electron/rebuild": "^3.2.13",
+    "electron-rebuild": "^3.2.9"
+  },
+  "dependencies": {
+    "node-pty": "^0.10.1"
+  }
+}
+```
+
+## Terminal Functionality Impact
+
+If node-pty is not available:
+- Terminal tab will not function
+- Shell commands cannot be executed
+- The app will show warning: "Warning: node-pty not available. Terminal features will be disabled."
+
+## Important Notes
+
+1. **DO NOT** upgrade Electron beyond v22.x without testing node-pty compatibility first
+2. **ALWAYS** run `npx electron-rebuild` after:
+   - Installing/updating dependencies
+   - Changing Node.js versions
+   - Cloning the project on a new machine
+3. **PREFER** using the exact versions listed above for guaranteed compatibility
+
+## Related Files
+
+- [main.js](mdc:main.js) - Contains node-pty initialization
+- [app/tools/terminal_session.js](mdc:app/tools/terminal_session.js) - Terminal implementation
+- [Map.md](mdc:Map.md) - Project documentation with fix details

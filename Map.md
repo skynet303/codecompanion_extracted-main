@@ -402,4 +402,27 @@ To enable Serper API (recommended for best search results):
 - Configured npm to use user-local directory for global packages
 - Installed ripgrep for enhanced search functionality
 - Successfully installed Claude Code v1.0.35
-- PATH updated in ~/.bashrc to include npm global bin directory 
+- PATH updated in ~/.bashrc to include npm global bin directory
+
+### 9. **Node-pty Build Fix** 🔧
+- **Problem**: `Cannot find module '../build/Debug/pty.node'` error on Linux
+- **Root Cause**: Native modules need to be rebuilt for specific Electron version
+- **Solution**: Created `fix-node-pty.sh` script that:
+  - Installs @electron/rebuild package
+  - Rebuilds all native modules for current Electron version
+- **Fix Script**: `./fix-node-pty.sh` - Run this when encountering node-pty errors
+- **Manual Fix**:
+  ```bash
+  npm install @electron/rebuild --save-dev
+  npx electron-rebuild
+  ```
+- **Electron Downgrade**: If issues persist with newer Electron versions:
+  - Downgraded from Electron 28 to Electron 22.3.27 for better compatibility
+  - node-pty 0.10.1 works perfectly with Electron 22
+  - Commands to downgrade:
+    ```bash
+    npm uninstall electron @electron/rebuild electron-rebuild
+    npm install --save-dev electron@22.3.27 @electron/rebuild@3.2.13 electron-rebuild@3.2.9
+    npx electron-rebuild
+    ```
+- **Status**: ✅ RESOLVED - Terminal functionality fully working with Electron 22 
