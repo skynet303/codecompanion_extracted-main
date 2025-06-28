@@ -190,6 +190,15 @@ To enable Serper API (recommended for best search results):
 2. Add to settings or environment: `SERPER_API_KEY=your_key`
 3. The system will automatically use Serper when available
 
+## Tool Execution Chain
+For a detailed map of how tools are defined, registered, and executed, see **[TOOL_EXECUTION_CHAIN_MAP.md](./TOOL_EXECUTION_CHAIN_MAP.md)**. This document covers:
+- Tool definition structure and available tools
+- Tool registration and filtering
+- LLM integration and formatting
+- Tool call processing and approval flow
+- Execution lifecycle and error recovery
+- Special features like parallel caching and research orchestration
+
 ## Future Enhancements
 - Complete persistent shell integration
 - Extended caching for embeddings
