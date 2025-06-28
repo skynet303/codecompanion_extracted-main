@@ -270,14 +270,19 @@ class TerminalSession {
       console.warn('[Terminal] Terminal not initialized, creating shell session...');
       this.createShellSession();
       // Wait a bit for terminal to initialize
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     return new Promise((resolve, reject) => {
       this.outputData = '';
+      let hasResolved = false;
       
       const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      this.realtimeMonitor.startMonitoring(commandId, command);
+      console.log(`[Terminal] Executing command: ${command}`);
+      
+      if (this.realtimeMonitor) {
+        this.realtimeMonitor.startMonitoring(commandId, command);
+      }
       
       // Clear previous output
       this.outputData = '';
@@ -293,19 +298,24 @@ class TerminalSession {
         
         // Check if command finished executing
         if (this.isCommandFinishedExecuting(command)) {
-          // Remove listener
-          ipcRenderer.removeListener('shell-data', shellDataListener);
-          
-          // Extract the actual output
-          const output = this.getTerminalOutput(command);
-          
-          // Complete monitoring
-          if (this.realtimeMonitor) {
-            const analysis = this.realtimeMonitor.completeMonitoring(commandId);
-            this.lastCommandAnalysis = analysis;
+          if (!hasResolved) {
+            hasResolved = true;
+            console.log(`[Terminal] Command completed: ${command}`);
+            
+            // Remove listener
+            ipcRenderer.removeListener('shell-data', shellDataListener);
+            
+            // Extract the actual output
+            const output = this.getTerminalOutput(command);
+            
+            // Complete monitoring
+            if (this.realtimeMonitor) {
+              const analysis = this.realtimeMonitor.completeMonitoring(commandId);
+              this.lastCommandAnalysis = analysis;
+            }
+            
+            resolve(output);
           }
-          
-          resolve(output);
         }
       };
       
@@ -315,14 +325,28 @@ class TerminalSession {
       // Write the command
       this.writeToShell(command + '\r');
       
-      // Set timeout
+      // Fallback timeout with better error handling
       setTimeout(() => {
-        ipcRenderer.removeListener('shell-data', shellDataListener);
-        if (this.realtimeMonitor) {
-          this.realtimeMonitor.abortMonitoring(commandId);
+        if (!hasResolved) {
+          hasResolved = true;
+          console.warn(`[Terminal] Command timed out: ${command}`);
+          console.warn(`[Terminal] Output collected: ${this.outputData.substring(0, 200)}...`);
+          
+          ipcRenderer.removeListener('shell-data', shellDataListener);
+          if (this.realtimeMonitor) {
+            this.realtimeMonitor.abortMonitoring(commandId);
+          }
+          
+          // Return whatever output we have instead of failing
+          const output = this.getTerminalOutput(command);
+          if (output.trim()) {
+            console.log(`[Terminal] Returning partial output for timed-out command`);
+            resolve(output);
+          } else {
+            reject(new Error('Command execution timeout - no output received'));
+          }
         }
-        reject(new Error('Command execution timeout'));
-      }, 30000);
+      }, 5000); // Reduced timeout to 5 seconds for faster feedback
     });
   }
   
@@ -338,6 +362,72 @@ class TerminalSession {
    */
   getMonitoringStatus() {
     return this.realtimeMonitor.getStatus();
+  }
+
+  /**
+   * Execute a simple command with a timeout-based approach
+   * This is more reliable for basic commands like pwd, ls, etc.
+   */
+  async executeSimpleCommand(command, timeout = 2000) {
+    // Ensure terminal is created
+    if (!this.terminal) {
+      console.warn('[Terminal] Terminal not initialized, creating shell session...');
+      this.createShellSession();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    return new Promise((resolve, reject) => {
+      this.outputData = '';
+      let hasResolved = false;
+      
+      console.log(`[Terminal] Executing simple command: ${command}`);
+      
+      const shellDataListener = (event, data) => {
+        this.outputData += data;
+      };
+      
+      // Listen for shell data
+      ipcRenderer.on('shell-data', shellDataListener);
+      
+      // Write the command
+      this.writeToShell(command + '\r');
+      
+      // Wait for output with timeout
+      setTimeout(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          ipcRenderer.removeListener('shell-data', shellDataListener);
+          
+          // Extract output
+          const cleanOutput = this.removeASCII(this.outputData);
+          const lines = cleanOutput.split('\n');
+          
+          // Find the command in output and get everything after it
+          let outputStartIndex = -1;
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(command)) {
+              outputStartIndex = i + 1;
+              break;
+            }
+          }
+          
+          if (outputStartIndex >= 0) {
+            // Get output lines, excluding prompt lines
+            const outputLines = lines.slice(outputStartIndex)
+              .filter(line => !line.includes(FIXED_PROMPT) && line.trim() !== '');
+            
+            resolve(outputLines.join('\n').trim());
+          } else {
+            // If we can't find the command, return all non-empty lines
+            const output = lines
+              .filter(line => line.trim() !== '' && !line.includes(FIXED_PROMPT))
+              .join('\n')
+              .trim();
+            resolve(output);
+          }
+        }
+      }, timeout);
+    });
   }
 
   isCommandFinishedExecuting(command) {

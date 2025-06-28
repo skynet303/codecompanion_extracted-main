@@ -26,47 +26,38 @@ Follow these guidelines:
 `;
 
 const TEMPERATURE = 0.1;
-
-// const API_KEY = 'csk-tcnm6mepj263jxn65hpxe5trfvprnxn6etrwnxd94rtdc9x8';
-// const BASE_URL = "https://api.cerebras.ai/v1";
-// const MODEL = "llama-3.3-70b";
-
-const API_KEY = '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';
-const BASE_URL = "https://openrouter.ai/api/v1";
-const MODEL = "qwen/qwen3-32b"; // meta-llama/llama-4-scout , meta-llama/llama-3.3-70b-instruct, qwen/qwen3-32b
-
 const MAX_TOKENS = 15000;
 
 class LLMApply {
   constructor() {
-    this.client = new OpenAI({
-      apiKey: API_KEY,
-      baseURL: BASE_URL,
-      dangerouslyAllowBrowser: true,
-      maxRetries: 5,
-    });
+    // Initialize without hardcoded credentials - will use chatController's model
+    this.client = null;
   }
 
   async apply(changes, fileContent) {
     this.fileContent = fileContent;
     const messages = this.buildMessages(changes, fileContent);
     
-    const content = await this.makeRequest(messages);
+    // Use chatController's smallModel if available, otherwise use main model
+    const model = chatController.smallModel || chatController.model;
+    if (!model) {
+      throw new Error('No model available for LLM apply. Please configure API keys in settings.');
+    }
+    
+    const content = await this.makeRequest(messages, model);
     return this.formatResponse(content);
   }
 
-  async makeRequest(messages) {
-    const request = {
+  async makeRequest(messages, model) {
+    // Use the model's call method with appropriate options
+    const response = await model.call({
       messages: messages,
-      model: MODEL,
       temperature: TEMPERATURE,
       max_tokens: MAX_TOKENS,
-      provider: {
-        sort: 'throughput'
-      }
-    };
-    const response = await this.client.chat.completions.create(request);
-    return response.choices[0].message.content;
+      tools: []  // No tools needed for file editing
+    });
+    
+    return response.content || '';
   }
 
   buildMessages(changes, fileContent) {

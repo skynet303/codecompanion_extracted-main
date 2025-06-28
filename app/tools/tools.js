@@ -261,6 +261,11 @@ async function shell({ command, background }) {
   let commandResult;
   let errorAnalysis = null;
   
+  // List of simple commands that don't need complex prompt detection
+  const simpleCommands = ['pwd', 'ls', 'date', 'whoami', 'hostname', 'echo', 'which', 'env'];
+  const commandBase = command.trim().split(/\s+/)[0];
+  const isSimpleCommand = simpleCommands.includes(commandBase) || command.trim().startsWith('echo ');
+  
   // Ensure we're in the correct working directory
   await chatController.terminalSession.getCurrentDirectory();
   
@@ -293,7 +298,18 @@ async function shell({ command, background }) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     return 'Command started in the background';
   } else {
-    commandResult = await chatController.terminalSession.executeShellCommand(command);
+    // Use simpler execution for basic commands
+    if (isSimpleCommand) {
+      console.log(`[Terminal] Using simple execution for command: ${command}`);
+      try {
+        commandResult = await chatController.terminalSession.executeSimpleCommand(command);
+      } catch (error) {
+        console.error(`[Terminal] Simple execution failed, falling back to regular execution: ${error.message}`);
+        commandResult = await chatController.terminalSession.executeShellCommand(command);
+      }
+    } else {
+      commandResult = await chatController.terminalSession.executeShellCommand(command);
+    }
   }
   
   // Analyze the command output for errors

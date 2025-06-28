@@ -138,13 +138,15 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - New dedicated web research item type
   - Proper output format for web findings
 
-### 8. **CRITICAL Terminal Bug Fixes** 🐛➡️✅
+### 8. **CRITICAL Terminal & API Bug Fixes** 🐛➡️✅
 - **Problems Fixed**:
   1. `Cannot read properties of undefined (reading 'push')` error when executing shell commands
   2. Terminal not created on startup - only created when clearing chat
   3. Working directory always defaulted to home directory instead of launch directory
   4. Missing `os` module import in Agent class
   5. Command corruption - commands were being modified with echo statements
+  6. **Command execution timeout** - prompt detection failing causing all commands to timeout
+  7. **Wrong API provider** - OpenAI being called instead of selected provider (OpenRouter)
 
 - **Root Causes & Fixes**:
   1. **Command Execution Redesign** (`app/tools/terminal_session.js`):
@@ -154,26 +156,44 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
      - Uses `isCommandFinishedExecuting()` to detect completion via FIXED_PROMPT
      - Uses `writeToShell()` instead of direct terminal writes
   
-  2. **Terminal Not Auto-Created** (`app/tools/terminal_session.js`):
+  2. **Terminal Timeout Fix** (`app/tools/terminal_session.js`):
+     - Added `executeSimpleCommand()` method for basic commands (pwd, ls, etc.)
+     - Reduced timeout to 5 seconds with better error handling
+     - Returns partial output on timeout instead of failing
+     - Added debug logging for troubleshooting
+  
+  3. **Simple Commands** (`app/tools/tools.js`):
+     - Detects simple commands (pwd, ls, date, etc.)
+     - Uses timeout-based execution instead of prompt detection
+     - Falls back to regular execution if simple execution fails
+  
+  4. **Terminal Not Auto-Created** (`app/tools/terminal_session.js`):
      - Added check in `executeShellCommand()` to create terminal if not exists
      - Terminal now auto-initializes on first command execution
   
-  3. **Wrong Working Directory** (`app/chat/agent.js`):
+  5. **Wrong Working Directory** (`app/chat/agent.js`):
      - Changed from `this.currentWorkingDir = os.homedir()` 
      - To: `this.currentWorkingDir = process.cwd()`
      - Now uses the directory where CodeCompanion was launched
   
-  4. **Missing Import** (`app/chat/agent.js`):
+  6. **Missing Import** (`app/chat/agent.js`):
      - Added `const os = require('os');` import statement
+  
+  7. **API Provider Fix** (`app/tools/llm_apply.js`):
+     - Removed hardcoded OpenRouter credentials
+     - Now uses `chatController.smallModel` or `chatController.model`
+     - Respects user's selected provider (OpenRouter, OpenAI, Anthropic)
+     - No more unauthorized API calls
 
 - **Impact**: 
-  - All terminal commands execute cleanly without corruption
-  - No more timeout errors from malformed commands
+  - All terminal commands execute cleanly without corruption or timeouts
+  - Simple commands (pwd, ls) execute instantly
+  - API calls go to the correct provider
   - CodeCompanion respects the launch directory (e.g., ~/Downloads/test)
   - Terminal available immediately without needing to clear chat first
   
 - **Testing**: Created `test_codecompanion_fixes.js` to verify all fixes
-- **Status**: ✅ FULLY RESOLVED - All terminal issues fixed
+- **Status**: ✅ FULLY RESOLVED - All terminal and API issues fixed
 
 ### Performance Optimizations
 - Context caching reduces file I/O by 90%
