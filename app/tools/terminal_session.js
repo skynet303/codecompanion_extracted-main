@@ -24,9 +24,7 @@ class TerminalSession {
     this.sendToChatButton = null;
     this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
     
-    // Initialize missing properties that were causing the "push" error
-    this.terminalSessionDataListeners = [];
-    this.endMarker = '<<<COMMAND_END>>>';
+    // Initialize missing properties
     this.lastCommandAnalysis = null;
     
     // Initialize real-time monitor
@@ -266,7 +264,8 @@ class TerminalSession {
 
   async executeShellCommand(command) {
     return new Promise((resolve, reject) => {
-      let output = '';
+      // Reset outputData for this command
+      this.outputData = '';
       
       // Generate unique command ID
       const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -275,20 +274,21 @@ class TerminalSession {
       this.realtimeMonitor.startMonitoring(commandId, command);
       
       const executeTimeStamp = Date.now();
-      this.terminal.write(command + '; echo "' + this.endMarker + '"\r');
+      
+      // Simply write the command to the shell
+      this.writeToShell(command + '\r');
 
-      const dataListener = (data) => {
-        const chunk = data.toString();
-        output += chunk;
+      const shellDataListener = (event, data) => {
+        this.outputData += data;
         
         // Process output through real-time monitor
-        this.realtimeMonitor.processOutput(commandId, chunk);
+        this.realtimeMonitor.processOutput(commandId, data);
         
-        if (data.includes(this.endMarker)) {
-          this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-            (listener) => listener !== dataListener
-          );
-          output = output.slice(0, output.lastIndexOf(this.endMarker));
+        // Check if command is finished by looking for the prompt
+        if (this.isCommandFinishedExecuting(command)) {
+          ipcRenderer.removeListener('shell-data', shellDataListener);
+          
+          let output = this.outputData;
           output = this.postProcessOutput(output, command, executeTimeStamp);
           
           // Complete monitoring and get final analysis
@@ -301,14 +301,11 @@ class TerminalSession {
         }
       };
 
-      this.terminalSessionDataListeners.push(dataListener);
-      this.terminal.onData(dataListener);
+      ipcRenderer.on('shell-data', shellDataListener);
       
       // Timeout handling with monitoring cleanup
       setTimeout(() => {
-        this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-          (listener) => listener !== dataListener
-        );
+        ipcRenderer.removeListener('shell-data', shellDataListener);
         
         // Abort monitoring on timeout
         this.realtimeMonitor.abortMonitoring(commandId);
@@ -336,6 +333,8 @@ class TerminalSession {
     const lastOutputDataAfterCommand = this.removeASCII(this.outputData).split(command).pop();
     return lastOutputDataAfterCommand.includes(FIXED_PROMPT);
   }
+
+
 
   removeASCII(data) {
     return data ? data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '') : '';

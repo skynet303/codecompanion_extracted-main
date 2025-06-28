@@ -1,0 +1,112 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Terminal Command Execution Guidelines
+
+## Overview
+
+Terminal command execution in CodeCompanion must be kept simple to avoid command corruption issues.
+
+## Implementation Details
+
+### Command Execution Method
+
+The `executeShellCommand` method in [app/tools/terminal_session.js](mdc:app/tools/terminal_session.js) should:
+
+1. **Send commands directly**: Use `this.writeToShell(command + '\r')`
+2. **Listen for shell data**: Use IPC `shell-data` events
+3. **Detect completion**: Use the prompt marker (`FIXED_PROMPT`)
+
+### What NOT to Do ❌
+
+1. **DO NOT** append complex end markers like `echo '<<<COMMAND_END>>>'`
+2. **DO NOT** use subshells or command chaining for simple commands
+3. **DO NOT** write to terminal display (`this.terminal.write()`) for command execution
+4. **DO NOT** escape commands unless absolutely necessary
+
+### Correct Implementation Example
+
+```javascript
+async executeShellCommand(command) {
+  return new Promise((resolve, reject) => {
+    // Reset outputData for this command
+    this.outputData = '';
+    
+    // Simply write the command to the shell
+    this.writeToShell(command + '\r');
+
+    const shellDataListener = (event, data) => {
+      this.outputData += data;
+      
+      // Check if command is finished by looking for the prompt
+      if (this.isCommandFinishedExecuting(command)) {
+        ipcRenderer.removeListener('shell-data', shellDataListener);
+        
+        let output = this.outputData;
+        output = this.postProcessOutput(output, command, executeTimeStamp);
+        
+        resolve(output);
+      }
+    };
+
+    ipcRenderer.on('shell-data', shellDataListener);
+    
+    // Timeout handling
+    setTimeout(() => {
+      ipcRenderer.removeListener('shell-data', shellDataListener);
+      reject(new Error('Command execution timeout'));
+    }, 30000); // 30 second timeout
+  });
+}
+```
+
+## Common Issues and Solutions
+
+### Issue: Garbled/Corrupted Commands
+**Symptom**: Commands appear like:
+```
+clearhome/vm/codecompanion_extracted-main" && echo '<<<COMMAND_END>>>>'D_END>>>'
+```
+
+**Cause**: Complex command construction with markers and escaping
+
+**Solution**: Remove all command modification logic and send commands as-is
+
+### Issue: Event Listener Memory Leaks
+**Symptom**: MaxListenersExceededWarning in console
+
+**Cause**: Not properly removing event listeners
+
+**Solution**: Always use `ipcRenderer.removeListener()` when command completes or times out
+
+## Shell Type Handling
+
+The terminal supports multiple shell types:
+- `bash`
+- `zsh` 
+- `fish`
+- `powershell.exe`
+
+Each shell has its own prompt configuration in the `setPrompt()` method.
+
+## Key Properties
+
+- `this.outputData`: Accumulates command output
+- `this.shellType`: Current shell type (bash, zsh, etc.)
+- `FIXED_PROMPT`: Unique prompt marker for detecting command completion
+- `this.lastCommandAnalysis`: Stores error analysis from last command
+
+## Testing Command Execution
+
+To verify commands are working:
+1. Simple commands should execute without modification: `pwd`, `ls`, `cd`
+2. Complex commands with quotes should work: `echo "hello world"`
+3. Commands with paths should work: `cd "/path/with spaces"`
+
+## Related Files
+
+- [main.js](mdc:main.js) - IPC handlers for shell communication
+- [app/tools/tools.js](mdc:app/tools/tools.js) - Shell tool implementation
+- [app/lib/realtime-terminal-monitor.js](mdc:app/lib/realtime-terminal-monitor.js) - Error monitoring

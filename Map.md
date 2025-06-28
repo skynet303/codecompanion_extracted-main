@@ -50,6 +50,16 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - Unified interface for both providers
   - Smart result processing
 
+### Terminal Command Execution Fix
+- **Fixed**: Command truncation bug where complex commands were being corrupted
+- **Location**: `app/tools/terminal_session.js`
+- **Changes**:
+  - Added `escapeShellCommand()` method to properly escape special characters
+  - Updated `executeShellCommand()` to use subshells for Unix-like systems
+  - Improved command construction to prevent truncation with special characters
+  - Added debug logging for command execution troubleshooting
+- **Test Script**: `test-terminal-fix.js` - Contains test cases for various edge cases
+
 ## Core Application Structure
 
 ### Main Process (`main.js`)
@@ -392,4 +402,27 @@ To enable Serper API (recommended for best search results):
 - Configured npm to use user-local directory for global packages
 - Installed ripgrep for enhanced search functionality
 - Successfully installed Claude Code v1.0.35
-- PATH updated in ~/.bashrc to include npm global bin directory 
+- PATH updated in ~/.bashrc to include npm global bin directory
+
+### 9. **Node-pty Build Fix** 🔧
+- **Problem**: `Cannot find module '../build/Debug/pty.node'` error on Linux
+- **Root Cause**: Native modules need to be rebuilt for specific Electron version
+- **Solution**: Created `fix-node-pty.sh` script that:
+  - Installs @electron/rebuild package
+  - Rebuilds all native modules for current Electron version
+- **Fix Script**: `./fix-node-pty.sh` - Run this when encountering node-pty errors
+- **Manual Fix**:
+  ```bash
+  npm install @electron/rebuild --save-dev
+  npx electron-rebuild
+  ```
+- **Electron Downgrade**: If issues persist with newer Electron versions:
+  - Downgraded from Electron 28 to Electron 22.3.27 for better compatibility
+  - node-pty 0.10.1 works perfectly with Electron 22
+  - Commands to downgrade:
+    ```bash
+    npm uninstall electron @electron/rebuild electron-rebuild
+    npm install --save-dev electron@22.3.27 @electron/rebuild@3.2.13 electron-rebuild@3.2.9
+    npx electron-rebuild
+    ```
+- **Status**: ✅ RESOLVED - Terminal functionality fully working with Electron 22 

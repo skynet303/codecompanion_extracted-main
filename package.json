@@ -73,6 +73,7 @@
     "lodash": "^4.17.21",
     "marked": "^13.0.3",
     "marked-highlight": "^2.1.0",
+    "node-pty": "^0.10.1",
     "openai": "^4.83.0",
     "read-chunk": "^3.2.0",
     "simple-git": "^3.27.0",
@@ -80,7 +81,8 @@
     "voyageai": "^0.0.3-1"
   },
   "devDependencies": {
-    "electron": "^28.0.0",
+    "@electron/rebuild": "^3.2.13",
+    "electron": "^22.3.27",
     "electron-rebuild": "^3.2.9"
   }
 }
