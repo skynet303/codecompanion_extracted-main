@@ -50,6 +50,28 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - Unified interface for both providers
   - Smart result processing
 
+### Terminal Fixes (Latest)
+- **Fixed terminal initialization timing** - Added delay to ensure DOM is ready before terminal creation
+- **Enhanced error handling** - Better error messages and fallback mechanisms
+- **Added focus handling** - Terminal now properly focuses when clicked or tab is shown
+- **Fixed IPC listener duplicates** - Removed duplicate listeners that could cause input issues
+- **Added terminal debugging** - Created `debugTerminal()` method for troubleshooting
+- **Improved CSS styling** - Ensured terminal container has proper dimensions and visibility
+- **Created test script** - `test-terminal.js` for debugging terminal issues in dev console
+
+### Key Terminal Components
+- `app/tools/terminal_session.js` - Main terminal implementation with xterm.js
+- `app/lib/realtime-terminal-monitor.js` - Real-time error monitoring
+- `app/lib/terminal-error-monitor.js` - Terminal error detection and analysis
+- `main.js` - IPC handlers for shell communication
+- `renderer.js` - Terminal initialization on app startup
+
+### Running Terminal Tests
+1. Open developer console (F12)
+2. Run `testTerminal()` to test terminal functionality
+3. Check console logs for diagnostic information
+4. Use `chatController.terminalSession.debugTerminal()` for detailed debug info
+
 ## Core Application Structure
 
 ### Main Process (`main.js`)

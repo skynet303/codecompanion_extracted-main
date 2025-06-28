@@ -131,7 +131,23 @@ function initializeApp() {
   viewController.renderModelDropdowns();
   viewController.initializeUIFormatting();
   viewController.handlePanelResize();
-  chatController.clearChat();
+  
+  // Ensure DOM is fully ready before initializing terminal
+  setTimeout(() => {
+    try {
+      chatController.clearChat();
+      console.log('Terminal initialized successfully');
+    } catch (error) {
+      console.error('Error initializing terminal:', error);
+      // Fallback: try to create terminal session directly
+      try {
+        chatController.terminalSession.createShellSession();
+      } catch (terminalError) {
+        console.error('Failed to create terminal session:', terminalError);
+      }
+    }
+  }, 100);
+  
   onboardingController.showAllTips();
   chatController.customModelsManager.render();
 }

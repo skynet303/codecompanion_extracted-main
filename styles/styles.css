@@ -26,6 +26,25 @@ pre {
 
 .xterm {
   padding: 1rem;
+  width: 100%;
+  height: 100%;
+}
+
+#terminal_output {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-color: #111111;
+}
+
+/* Ensure xterm cursor is visible */
+.xterm .xterm-cursor {
+  background-color: #c0c0c0 !important;
+}
+
+/* Ensure xterm text is visible */
+.xterm .xterm-viewport {
+  overflow-y: auto !important;
 }
 
 .autosize-textarea {

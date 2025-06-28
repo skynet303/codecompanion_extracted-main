@@ -78,62 +78,118 @@ class TerminalSession {
   }
 
   createTerminal() {
-    this.terminal = new Terminal({
-      fontFamily: 'FiraCodeNerdFont, monospace',
-      fontWeight: 'normal',
-      fontSize: 12,
-      letterSpacing: 0,
-      lineHeight: 1.25,
-      rows: 48,
-      windowsMode: isWindows,
-      allowProposedApi: true,
-      overviewRulerWidth: 20,
-      theme: {
-        foreground: '#c0c0c0',
-        background: '#111111',
-        black: '#000000',
-        red: '#C51E14',
-        green: '#DAA520',
-        yellow: '#C7C329',
-        blue: '#0A2FC4',
-        magenta: '#C839C5',
-        cyan: '#20C5C6',
-        white: '#C7C7C7',
-        lightRed: '#c0c0c0',
-        lightGreen: '#20B2AA',
-        lightYellow: '#708090',
-        lightBlue: '#ba0e2e',
-        lightMagenta: '#DAA520',
-        lightCyan: '#008b8b',
-        lightWhite: '#ba0e2e',
-        lightBlack: '#708090',
-      },
-    });
+    // Check if terminal element exists
+    const terminalElement = document.getElementById('terminal_output');
+    if (!terminalElement) {
+      console.error('Terminal output element not found in DOM');
+      chatController.chat.addFrontendMessage('error', 'Terminal container not found. Please refresh the application.');
+      return;
+    }
 
-    this.terminal.open(document.getElementById('terminal_output'));
-    this.terminal.loadAddon(this.fitAddon);
-    this.terminal.loadAddon(
-      new WebLinksAddon((event, uri) => {
-        chatController.browser.loadUrl(uri);
-      }),
-    );
-    this.terminal.loadAddon(new Unicode11Addon());
-    this.terminal.unicode.activeVersion = '11';
+    try {
+      this.terminal = new Terminal({
+        fontFamily: 'FiraCodeNerdFont, monospace',
+        fontWeight: 'normal',
+        fontSize: 12,
+        letterSpacing: 0,
+        lineHeight: 1.25,
+        rows: 48,
+        windowsMode: isWindows,
+        allowProposedApi: true,
+        overviewRulerWidth: 20,
+        theme: {
+          foreground: '#c0c0c0',
+          background: '#111111',
+          black: '#000000',
+          red: '#C51E14',
+          green: '#DAA520',
+          yellow: '#C7C329',
+          blue: '#0A2FC4',
+          magenta: '#C839C5',
+          cyan: '#20C5C6',
+          white: '#C7C7C7',
+          lightRed: '#c0c0c0',
+          lightGreen: '#20B2AA',
+          lightYellow: '#708090',
+          lightBlue: '#ba0e2e',
+          lightMagenta: '#DAA520',
+          lightCyan: '#008b8b',
+          lightWhite: '#ba0e2e',
+          lightBlack: '#708090',
+        },
+      });
 
-    ipcRenderer.send('start-shell', {
-      cwd: chatController.agent.currentWorkingDir,
-    });
-    ipcRenderer.on('shell-type', (event, data) => {
-      this.shellType = data;
-      this.setPrompt();
-    });
-    ipcRenderer.on('shell-data', (event, data) => {
-      this.writeToTerminal(data);
-    });
-    this.terminal.onData((data) => this.writeToShell(data));
-    
-    this.createSendToChatButton();
-    this.terminal.onSelectionChange(this.debouncedSelectionHandler);
+      this.terminal.open(terminalElement);
+      console.log('Terminal opened successfully');
+      
+      this.terminal.loadAddon(this.fitAddon);
+      this.terminal.loadAddon(
+        new WebLinksAddon((event, uri) => {
+          chatController.browser.loadUrl(uri);
+        }),
+      );
+      this.terminal.loadAddon(new Unicode11Addon());
+      this.terminal.unicode.activeVersion = '11';
+
+      // Test if terminal is working by writing a test message
+      this.terminal.write('Initializing terminal...\r\n');
+      
+      // Ensure terminal is focusable and handle click events
+      terminalElement.addEventListener('click', () => {
+        console.log('Terminal clicked, focusing...');
+        this.terminal.focus();
+      });
+      
+      // Also focus when the tab is shown
+      const terminalTab = document.getElementById('shell-tab');
+      if (terminalTab) {
+        terminalTab.addEventListener('shown.bs.tab', () => {
+          console.log('Terminal tab shown, focusing terminal...');
+          setTimeout(() => {
+            this.terminal.focus();
+            this.resizeTerminalWindow();
+          }, 100);
+        });
+      }
+
+      ipcRenderer.send('start-shell', {
+        cwd: chatController.agent.currentWorkingDir || process.cwd(),
+      });
+      
+      // Remove any existing listeners to prevent duplicates
+      ipcRenderer.removeAllListeners('shell-type');
+      ipcRenderer.removeAllListeners('shell-data');
+      ipcRenderer.removeAllListeners('shell-error');
+      
+      // Set up IPC listeners
+      ipcRenderer.on('shell-type', (event, data) => {
+        this.shellType = data;
+        this.setPrompt();
+      });
+      
+      ipcRenderer.on('shell-data', (event, data) => {
+        this.writeToTerminal(data);
+      });
+      
+      ipcRenderer.on('shell-error', (event, error) => {
+        console.error('Shell error:', error);
+        this.terminal.write(`\r\n[ERROR] ${error}\r\n`);
+      });
+      
+      // Set up terminal data handler
+      this.terminal.onData((data) => {
+        console.log('Terminal data received:', data.charCodeAt(0), data);
+        this.writeToShell(data);
+      });
+      
+      this.createSendToChatButton();
+      this.terminal.onSelectionChange(this.debouncedSelectionHandler);
+      
+      console.log('Terminal initialization complete');
+    } catch (error) {
+      console.error('Error creating terminal:', error);
+      chatController.chat.addFrontendMessage('error', `Failed to create terminal: ${error.message}`);
+    }
   }
 
   clearTerminal() {
@@ -410,6 +466,49 @@ class TerminalSession {
       console.error(error);
       return false;
     }
+  }
+
+  /**
+   * Debug function to test terminal functionality
+   */
+  debugTerminal() {
+    console.log('=== Terminal Debug Info ===');
+    console.log('Terminal instance exists:', !!this.terminal);
+    console.log('Terminal element exists:', !!document.getElementById('terminal_output'));
+    console.log('Shell type:', this.shellType);
+    console.log('IPC connected:', !!ipcRenderer);
+    
+    if (this.terminal) {
+      console.log('Terminal dimensions:', {
+        cols: this.terminal.cols,
+        rows: this.terminal.rows
+      });
+      console.log('Terminal has focus:', document.activeElement === this.terminal.element);
+      
+      // Try to write a test message
+      try {
+        this.terminal.write('\r\n[DEBUG] Terminal test message\r\n');
+        console.log('Successfully wrote to terminal');
+      } catch (error) {
+        console.error('Error writing to terminal:', error);
+      }
+      
+      // Try to send a test command
+      try {
+        this.writeToShell('echo "Terminal input test"\r');
+        console.log('Successfully sent command to shell');
+      } catch (error) {
+        console.error('Error sending to shell:', error);
+      }
+    } else {
+      console.log('Terminal not initialized. Attempting to create...');
+      try {
+        this.createShellSession();
+      } catch (error) {
+        console.error('Error creating shell session:', error);
+      }
+    }
+    console.log('=== End Debug Info ===');
   }
 
   createSendToChatButton() {
