@@ -144,13 +144,15 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   2. Terminal not created on startup - only created when clearing chat
   3. Working directory always defaulted to home directory instead of launch directory
   4. Missing `os` module import in Agent class
+  5. Command corruption - commands were being modified with echo statements
 
 - **Root Causes & Fixes**:
-  1. **Missing Property Initialization** (`app/tools/terminal_session.js`):
-     - Added `this.terminalSessionDataListeners = []` - Now properly initialized as array
-     - Added `this.endMarker = '<<<COMMAND_END>>>'` - Command completion marker
-     - Added `this.lastCommandAnalysis = null` - Command analysis storage
-     - Added `postProcessOutput()` method for cleaning terminal output
+  1. **Command Execution Redesign** (`app/tools/terminal_session.js`):
+     - Removed problematic `endMarker` and echo injection
+     - Reverted to original IPC-based command execution pattern
+     - Uses `ipcRenderer.on('shell-data')` for output collection
+     - Uses `isCommandFinishedExecuting()` to detect completion via FIXED_PROMPT
+     - Uses `writeToShell()` instead of direct terminal writes
   
   2. **Terminal Not Auto-Created** (`app/tools/terminal_session.js`):
      - Added check in `executeShellCommand()` to create terminal if not exists
@@ -165,7 +167,8 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
      - Added `const os = require('os');` import statement
 
 - **Impact**: 
-  - All terminal commands (pwd, ls, cd, etc.) work without errors
+  - All terminal commands execute cleanly without corruption
+  - No more timeout errors from malformed commands
   - CodeCompanion respects the launch directory (e.g., ~/Downloads/test)
   - Terminal available immediately without needing to clear chat first
   

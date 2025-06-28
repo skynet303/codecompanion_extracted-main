@@ -24,9 +24,7 @@ class TerminalSession {
     this.sendToChatButton = null;
     this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
     
-    // Initialize missing properties that were causing the "push" error
-    this.terminalSessionDataListeners = [];
-    this.endMarker = '<<<COMMAND_END>>>';
+    // Initialize properties for command analysis
     this.lastCommandAnalysis = null;
     
     // Initialize real-time monitor
@@ -276,55 +274,55 @@ class TerminalSession {
     }
     
     return new Promise((resolve, reject) => {
-      let output = '';
+      this.outputData = '';
       
-      // Generate unique command ID
       const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Start monitoring
       this.realtimeMonitor.startMonitoring(commandId, command);
       
-      const executeTimeStamp = Date.now();
-      this.terminal.write(command + '; echo "' + this.endMarker + '"\r');
-
-      const dataListener = (data) => {
-        const chunk = data.toString();
-        output += chunk;
+      // Clear previous output
+      this.outputData = '';
+      
+      // Set up the data listener
+      const shellDataListener = (event, data) => {
+        this.outputData += data;
         
-        // Process output through real-time monitor
-        this.realtimeMonitor.processOutput(commandId, chunk);
+        // Process output through monitor
+        if (this.realtimeMonitor) {
+          this.realtimeMonitor.processOutput(commandId, data.toString());
+        }
         
-        if (data.includes(this.endMarker)) {
-          this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-            (listener) => listener !== dataListener
-          );
-          output = output.slice(0, output.lastIndexOf(this.endMarker));
-          output = this.postProcessOutput(output, command, executeTimeStamp);
+        // Check if command finished executing
+        if (this.isCommandFinishedExecuting(command)) {
+          // Remove listener
+          ipcRenderer.removeListener('shell-data', shellDataListener);
           
-          // Complete monitoring and get final analysis
-          const analysis = this.realtimeMonitor.completeMonitoring(commandId);
+          // Extract the actual output
+          const output = this.getTerminalOutput(command);
           
-          // Store the analysis for later retrieval
-          this.lastCommandAnalysis = analysis;
+          // Complete monitoring
+          if (this.realtimeMonitor) {
+            const analysis = this.realtimeMonitor.completeMonitoring(commandId);
+            this.lastCommandAnalysis = analysis;
+          }
           
           resolve(output);
         }
       };
-
-      this.terminalSessionDataListeners.push(dataListener);
-      this.terminal.onData(dataListener);
       
-      // Timeout handling with monitoring cleanup
+      // Listen for shell data
+      ipcRenderer.on('shell-data', shellDataListener);
+      
+      // Write the command
+      this.writeToShell(command + '\r');
+      
+      // Set timeout
       setTimeout(() => {
-        this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-          (listener) => listener !== dataListener
-        );
-        
-        // Abort monitoring on timeout
-        this.realtimeMonitor.abortMonitoring(commandId);
-        
+        ipcRenderer.removeListener('shell-data', shellDataListener);
+        if (this.realtimeMonitor) {
+          this.realtimeMonitor.abortMonitoring(commandId);
+        }
         reject(new Error('Command execution timeout'));
-      }, 30000); // 30 second timeout
+      }, 30000);
     });
   }
   
