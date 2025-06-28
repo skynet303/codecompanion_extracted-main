@@ -281,12 +281,42 @@ Before execution, tools show previews:
 1. **Definition** → Tools defined with schema and execute function
 2. **Registration** → Tools filtered and formatted for model
 3. **Model Call** → Tools passed to LLM with messages
-4. **Response** → LLM returns tool calls in response
-5. **Validation** → Agent validates tool exists and permissions
-6. **Preview** → User sees what will happen
-7. **Approval** → User approves/rejects (if required)
-8. **Execution** → Tool function runs with parsed arguments
-9. **Result** → Result added to conversation
-10. **Continuation** → Model called again with tool results
+4. **Checkpoint** → Project state is committed before execution (`CheckpointManager`)
+5. **Response** → LLM returns tool calls in response
+6. **Validation** → Agent validates tool exists and permissions
+7. **Preview** → User sees what will happen
+8. **Approval** → User approves/rejects (if required)
+9. **Execution** → Tool function runs with parsed arguments
+10. **Result** → Result added to conversation
+11. **Continuation** → Model called again with tool results
 
 This creates a complete feedback loop where the LLM can use tool results to continue the task until completion.
+
+## 11. Transactional Checkpoints & Rollback
+
+A critical, yet previously undocumented, feature is the transactional nature of tool calls, managed by the `CheckpointManager`.
+
+### How It Works
+- **Underlying System**: Uses a hidden Git repository located in the user's data directory (`.shadowDir`) to track changes to the project.
+- **Commit on Execution**: Before a tool call is executed, `checkpoints.create(toolId)` is called. This function commits the *entire current state* of the project, using the unique `toolId` as the commit message.
+- **Rollback Capability**: The system exposes a `checkpoints.restore(toolId)` function. When called, it performs two key actions:
+    1. **File System Restore**: Executes `git reset --hard <commit_hash>` in the shadow repository, reverting all files in the project to the state they were in when the checkpoint was created.
+    2. **Chat History Restore**: Calls `chat.deleteAfterToolCall(toolId)` to remove the corresponding tool call and all subsequent messages from the conversation history.
+
+### Implications
+This system ensures that every tool call is an atomic, transactional operation that can be fully and safely reversed, providing a powerful safety net for both the user and the AI.
+
+## 12. Planner & Research Agent Sub-System
+
+In addition to the main agent's tool execution flow, there is a specialized sub-system for planning and research, orchestrated by the `ResearchAgent`. This system has its own distinct tool handling loop.
+
+### Key Characteristics
+- **Independent Loop**: The `ResearchAgent` runs its own multi-step execution loop, independent of the main chat flow, to accomplish a specific research goal.
+- **Specialized Tools**: It uses a separate set of tools defined in `app/chat/planner/tools.js` (`read_files`, `search_codebase`, `web_search`, `output`).
+- **Forced Tool Calls**: The agent can force the LLM to use a tool by setting `tool_choice: 'required'`, ensuring it gathers information instead of just responding with text.
+- **Context-Aware Prompts**: The agent dynamically builds its system prompt based on the nature of the task, switching between project-focused and web-focused instructions (`WEB_RESEARCH_INSTRUCTIONS` vs `PROJECT_RESEARCH_INSTRUCTIONS`).
+
+### The Dynamic `output` Tool
+- The most important planner tool is `output`. Its purpose is to return the final, structured result of the research task.
+- Its schema is not fixed. It is dynamically generated based on the `outputFormat` defined for the specific `researchItem` being executed.
+- In its final step, the `ResearchAgent` forces the LLM to call the `output` tool, guaranteeing that the research concludes with a structured data payload rather than a simple text message. This structured data is then used to drive the next phase of the main agent's work.
