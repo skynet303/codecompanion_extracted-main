@@ -41,12 +41,18 @@ class RelevantFilesFinder {
   }
 
   async getRelevantFiles(message) {
+    // Check if project controller and current project exist
+    if (!chatController.agent?.projectController?.currentProject) {
+      console.warn('[RelevantFilesFinder] No project loaded, skipping search');
+      return new Map();
+    }
+
     const searchResults = await chatController.agent.projectController.searchEmbeddings({
       query: message + ' relevant files', count: 6, filenamesOnly: true,
     });
 
     if (!searchResults || searchResults.length === 0) {
-      return [];
+      return new Map();
     }
 
     let fileMap = new Map();

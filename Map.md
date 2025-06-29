@@ -68,8 +68,12 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - `this.endMarker = '<<<COMMAND_END>>>'` - Command completion marker
   - `this.lastCommandAnalysis = null` - Command analysis storage
 - **Added Missing Method**: `postProcessOutput()` for cleaning terminal output
+- **Recent Additional Fixes**:
+  - Fixed `isWindows` undefined error by adding proper definition
+  - Improved command execution using `printf` instead of `echo` for better reliability
+  - Rebuilt node-pty native modules for Electron compatibility
 - **Impact**: All terminal commands (pwd, ls, cd, etc.) now work without errors
-- **Status**: ✅ RESOLVED - Terminal functionality fully restored
+- **Status**: ✅ RESOLVED - Terminal functionality fully restored (re-fixed after regression)
 
 ### 9. **Planner/Research Subsystem Enhancements** 🚀
 - **Enhanced Search Integration** (`app/tools/enhanced_search_core.js`)

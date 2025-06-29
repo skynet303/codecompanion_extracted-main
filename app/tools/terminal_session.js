@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('graceful-fs');
+const os = require('os');
 const { Terminal } = require('@xterm/xterm');
 const { FitAddon } = require('@xterm/addon-fit');
 const { WebLinksAddon } = require('@xterm/addon-web-links');
@@ -9,6 +10,7 @@ const { debounce } = require('lodash');
 const { withTimeout, log } = require('../utils');
 const RealtimeTerminalMonitor = require('../lib/realtime-terminal-monitor');
 
+const isWindows = process.platform === 'win32';
 let FIXED_PROMPT = '\x91\x91\x91';
 const PROMPT_TIMEOUT = 1000;
 
@@ -75,6 +77,18 @@ class TerminalSession {
       this.interruptShellSession();
       this.clearTerminal();
     }
+    
+    // Ensure we navigate to the project directory after creating/clearing the terminal
+    const projectDir = chatController.agent?.currentWorkingDir || 
+                      chatController.agent?.projectController?.currentProject?.path;
+    
+    if (projectDir && projectDir !== os.homedir()) {
+      console.log('[Terminal] Navigating to project directory:', projectDir);
+      // Use a small delay to ensure the terminal is ready
+      setTimeout(() => {
+        this.navigateToDirectory(projectDir);
+      }, 500);
+    }
   }
 
   createTerminal() {
@@ -120,8 +134,15 @@ class TerminalSession {
     this.terminal.loadAddon(new Unicode11Addon());
     this.terminal.unicode.activeVersion = '11';
 
+    // Ensure we use the project directory if available
+    const workingDir = chatController.agent?.currentWorkingDir || 
+                      chatController.agent?.projectController?.currentProject?.path || 
+                      process.cwd();
+    
+    console.log('[Terminal] Starting shell in directory:', workingDir);
+    
     ipcRenderer.send('start-shell', {
-      cwd: chatController.agent.currentWorkingDir,
+      cwd: workingDir,
     });
     ipcRenderer.on('shell-type', (event, data) => {
       this.shellType = data;
@@ -275,19 +296,36 @@ class TerminalSession {
       this.realtimeMonitor.startMonitoring(commandId, command);
       
       const executeTimeStamp = Date.now();
-      this.terminal.write(command + '; echo "' + this.endMarker + '"\r');
+      
+      // Construct command with end marker based on shell type
+      let fullCommand;
+      
+      if (this.shellType === 'powershell.exe') {
+        // PowerShell: Use semicolon separator
+        fullCommand = `${command}; Write-Host "${this.endMarker}"`;
+      } else {
+        // Bash/Zsh/Fish: Use printf to avoid issues with echo and quotes
+        // printf is more reliable than echo for special strings
+        fullCommand = `${command}; printf '%s\\n' '${this.endMarker}'`;
+      }
+      
+      console.log('[Terminal] Executing command:', fullCommand); // Debug log
+      
+      // Display command in terminal and send to shell
+      this.terminal.write(fullCommand + '\r');
+      this.writeToShell(fullCommand + '\r');
 
-      const dataListener = (data) => {
+      const dataListener = (event, data) => {
         const chunk = data.toString();
         output += chunk;
         
         // Process output through real-time monitor
         this.realtimeMonitor.processOutput(commandId, chunk);
         
-        if (data.includes(this.endMarker)) {
-          this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-            (listener) => listener !== dataListener
-          );
+        if (chunk.includes(this.endMarker)) {
+          // Remove this listener from IPC
+          ipcRenderer.removeListener('shell-data', dataListener);
+          
           output = output.slice(0, output.lastIndexOf(this.endMarker));
           output = this.postProcessOutput(output, command, executeTimeStamp);
           
@@ -301,14 +339,13 @@ class TerminalSession {
         }
       };
 
-      this.terminalSessionDataListeners.push(dataListener);
-      this.terminal.onData(dataListener);
+      // Listen to shell output via IPC
+      ipcRenderer.on('shell-data', dataListener);
       
       // Timeout handling with monitoring cleanup
       setTimeout(() => {
-        this.terminalSessionDataListeners = this.terminalSessionDataListeners.filter(
-          (listener) => listener !== dataListener
-        );
+        // Remove the IPC listener
+        ipcRenderer.removeListener('shell-data', dataListener);
         
         // Abort monitoring on timeout
         this.realtimeMonitor.abortMonitoring(commandId);
@@ -375,32 +412,49 @@ class TerminalSession {
 
     let dir;
     try {
-      dir = await withTimeout(await this.executeShellCommand('pwd'), 500);
-    } catch (error) {
-      // attempt to cancel running command first
-      try {
-        this.interruptShellSession();
-        dir = await withTimeout(await this.executeShellCommand('pwd'), 500);
-      } catch (error) {
-        try {
-          this.setPrompt(true);
-        } catch (error) {
-          chatController.chat.addFrontendMessage('error', 'Error occured when checking current directory path');
-          return;
-        }
+      // First, ensure the terminal is ready
+      if (!this.terminal) {
+        console.error('[Terminal] Terminal not initialized');
+        return chatController.agent.currentWorkingDir;
       }
-    }
-
-    const lines = dir.split('\n');
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (this.directoryExists(lines[i])) {
-        chatController.agent.currentWorkingDir = lines[i];
-        this.needToUpdateWorkingDir = false;
+      
+      // Execute pwd command with proper error handling
+      const pwdPromise = this.executeShellCommand('pwd');
+      dir = await withTimeout(pwdPromise, 2000); // Increased timeout to 2 seconds
+      
+    } catch (error) {
+      console.error('[Terminal] Error getting current directory:', error);
+      
+      // If timeout or error, try to recover
+      try {
+        await this.interruptShellSession();
+        // Give the terminal a moment to recover
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const pwdPromise = this.executeShellCommand('pwd');
+        dir = await withTimeout(pwdPromise, 2000);
+      } catch (retryError) {
+        console.error('[Terminal] Retry failed:', retryError);
+        // Fall back to the known working directory
         return chatController.agent.currentWorkingDir;
       }
     }
 
-    chatController.chat.addFrontendMessage('error', 'Error occured when checking current directory path');
+    if (dir) {
+      const lines = dir.split('\n').filter(line => line.trim());
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const cleanPath = lines[i].trim();
+        if (cleanPath && this.directoryExists(cleanPath)) {
+          chatController.agent.currentWorkingDir = cleanPath;
+          this.needToUpdateWorkingDir = false;
+          return cleanPath;
+        }
+      }
+    }
+
+    // If we couldn't determine the directory, return the current known directory
+    console.warn('[Terminal] Could not determine current directory, using:', chatController.agent.currentWorkingDir);
+    return chatController.agent.currentWorkingDir;
   }
 
   directoryExists(dirPath) {
