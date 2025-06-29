@@ -46,9 +46,10 @@ class ChatController {
     this.chatLogs = [];
     this.agent = new Agent();
     this.terminalSession = new TerminalSession();
-    this.browser = new Browser();
-    this.taskTab = new TaskTab(this);
-    this.codeTab = new CodeTab(this);
+    // Defer UI component creation until DOM is ready
+    this.browser = null;
+    this.taskTab = null;
+    this.codeTab = null;
     this.processMessageChange = this.processMessageChange.bind(this);
     this.debouncedSearch = _.debounce(
       async () => { await this.relevantFilesFinder.search(); },
@@ -56,6 +57,13 @@ class ChatController {
     );
     this.usage = {};
     this.relevantFilesFinder = new RelevantFilesFinder();
+  }
+  
+  initializeUIComponents() {
+    // Called after DOM is ready
+    this.browser = new Browser();
+    this.taskTab = new TaskTab(this);
+    this.codeTab = new CodeTab(this);
   }
 
   loadAllSettings() {
@@ -319,13 +327,17 @@ class ChatController {
     this.chatLogs = [];
     this.agent.userDecision = null;
     this.terminalSession.createShellSession();
-    this.codeTab.closeFile();
+    if (this.codeTab) {
+      this.codeTab.closeFile();
+    }
     document.getElementById('streaming_output').innerHTML = '';
     document.getElementById('output').innerHTML = '';
     document.getElementById('retry_button').setAttribute('hidden', true);
     document.getElementById('approval_buttons').setAttribute('hidden', true);
     document.getElementById('messageInput').disabled = false;
-    this.taskTab.render();
+    if (this.taskTab) {
+      this.taskTab.render();
+    }
     document.getElementById('messageInput').setAttribute('placeholder', 'Provide task details...');
     this.stopProcess = false;
     this.usage = {};

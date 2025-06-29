@@ -96,6 +96,90 @@ This is the extracted production source code of CodeCompanion v7.1.15 with signi
   - Model awareness of tool failures
 - **Impact**: Research Agent now has feature parity with main agent
 
+### 10. **Terminal Logging Enhancement** 📊➡️🖥️
+- **Purpose**: Redirect debug logs from browser console to terminal for easier debugging
+- **Key Components**:
+  - **Main Process Handler** (`main.js`):
+    - `terminal-log` IPC handler - Receives log messages and outputs with timestamps
+  
+  - **Utility Functions** (`app/utils.js`):
+    - `terminalLog()` - Send regular log messages to terminal
+    - `terminalError()` - Send error messages to terminal  
+    - `terminalWarn()` - Send warning messages to terminal
+- **Usage**: Replace `console.log()` with `terminalLog()` in renderer process code
+
+### 11. **Terminal Command Output Capture Fix** ✅
+- **Purpose**: Fix issue where commands execute but output isn't returned to AI
+- **Problem**: Commands visible in terminal but AI receives empty/malformed output
+- **Root Cause**: End marker detected in command echo before actual output arrives
+- **Key Components**:
+  - **Terminal Session** (`app/tools/terminal_session.js`):
+    - `commandOutputCapture` property - Callback for capturing command output
+    - Modified `shell-data` handler - Sends data to both terminal display and command capture
+    - Unique end markers - Uses `<<<COMMAND_END_timestamp>>>`
+    - **Double End Marker Detection** - Waits for marker to appear twice (echo + execution)
+    - **Timing-Based Fallback** - Processes output after time gap if only one marker
+    - **Smart Output Filtering** - Skips command echoes, captures only actual output
+  
+- **How it works**:
+  1. Single `shell-data` listener handles all incoming data
+  2. Data flows to terminal display via `writeToTerminal()`
+  3. Command execution waits for end marker to appear in both echo and output
+  4. Filters out command echoes and terminal control sequences
+  5. Returns clean command output to AI
+- **Status**: ✅ RESOLVED - Terminal output capture fully functional
+
+### 12. **Browser Webview Error Handling & Memory Leak Fix** ✅
+- **Purpose**: Fix ERR_ABORTED spam and EventEmitter memory leaks in browser
+- **Problems Fixed**:
+  - Sites blocking webview access causing error spam
+  - Memory leak from accumulating event listeners
+  - Repeated failed attempts to load blocked sites
+- **Key Components**:
+  - **Browser Tab** (`app/chat/tabs/browser.js`):
+    - Event listener cleanup mechanism
+    - Failed URL tracking with retry limits
+    - User-friendly error messages for blocked sites
+  - **Main Process** (`main.js`):
+    - Error suppression for webview errors
+    - De-duplication of error logging
+- **Affected Sites Now Handled**:
+  - Social media (TikTok, Facebook, Reddit)
+  - Gaming platforms (Steam Community)
+  - Sites with strict CORS/embedding policies
+- **Status**: ✅ RESOLVED - Browser errors suppressed, memory leaks fixed
+
+### 13. **Renderer Initialization Order Fix** ✅
+- **Purpose**: Fix "Script failed to execute" errors on app startup
+- **Root Cause**: Controllers instantiated before DOM was ready
+- **Key Changes**:
+  - **Renderer** (`renderer.js`):
+    - Deferred controller instantiation to DOMContentLoaded
+    - Consolidated all DOM-dependent event listeners
+    - Added null checks for IPC handlers
+  - **Browser** (`app/chat/tabs/browser.js`):
+    - Added DOM element existence checks
+    - Removed invalid setMaxListeners call on webview
+- **Status**: ✅ RESOLVED - App initializes without errors
+
+### 14. **Final Browser Memory Leak & Error Fixes** ✅
+- **Purpose**: Complete resolution of remaining browser and initialization issues
+- **Issues Fixed**:
+  - Browser memory leak warnings (MaxListenersExceededWarning)
+  - Script execution errors persisting after initial fix
+  - Webview error suppression not working early enough
+- **Key Changes**:
+  - **Browser** (`app/chat/tabs/browser.js`):
+    - Added pageLoadCleanup mechanism
+    - Fail-safe cleanup on timeout or page load failure
+  - **ChatController** (`app/chat_controller.js`):
+    - Created initializeUIComponents() method
+    - Deferred UI component creation
+  - **Main Process** (`main.js`):
+    - Moved error suppression before app ready
+    - Added script execution error handler
+- **Status**: ✅ RESOLVED - All startup and runtime errors eliminated
+
 ### Performance Optimizations
 - Context caching reduces file I/O by 90%
 - Persistent shells eliminate spawn overhead
@@ -139,7 +223,7 @@ npm run build
 - **Tools** (`app/tools/`)
   - `file_operations.js` - File manipulation
   - `shell_command.js` - Shell execution
-  - `web_browser.js` - Browser integration
+  - `browser.js` - Integrated webview browser
   - `terminal_session.js` - Terminal UI management
   - `code_embeddings.js` - Code search functionality
   - `apply_changes.js` - Code modification logic

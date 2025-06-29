@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('graceful-fs');
 const GoogleSearch = require('./google_search');
 const { contextualCompress } = require('./contextual_compressor');
-const { normalizedFilePath, openFileLink, getTokenCount, isFileExists, readCodeFile } = require('../utils');
+const { normalizedFilePath, openFileLink, getTokenCount, isFileExists, readCodeFile, terminalLog } = require('../utils');
 const { relativePath, getDirectoryFiles } = require('../lib/fileOperations');
 const { generateDiff } = require('./code_diff');
 const { applyChanges, clearCache } = require('./apply_changes');
@@ -257,6 +257,10 @@ async function readFile({ targetFile }) {
 }
 
 async function shell({ command, background }) {
+  // Debug: Check if command is HTML-encoded
+  terminalLog('[Shell Tool] Received command:', command);
+  terminalLog('[Shell Tool] Command includes HTML entities:', command.includes('&') || command.includes('&lt;') || command.includes('&gt;'));
+  
   viewController.updateLoadingIndicator(true, 'Executing shell command ...  (click Stop to cancel)');
   let commandResult;
   let errorAnalysis = null;
@@ -267,6 +271,11 @@ async function shell({ command, background }) {
     return 'Command started in the background';
   } else {
     commandResult = await chatController.terminalSession.executeShellCommand(command);
+    
+    // Debug: Log what we got back
+    terminalLog('[Shell Tool] Command result:', commandResult);
+    terminalLog('[Shell Tool] Result length:', commandResult ? commandResult.length : 'null/undefined');
+    terminalLog('[Shell Tool] Result type:', typeof commandResult);
   }
   
   // Analyze the command output for errors

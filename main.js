@@ -21,6 +21,7 @@ let pty = null;
 try {
   pty = require('node-pty');
 } catch (error) {
+  console.error('innerError', error);
   console.error('Warning: node-pty not available. Terminal features will be disabled.');
   console.error('To fix: run "npm install @electron/rebuild && npx electron-rebuild"');
 }
@@ -253,6 +254,27 @@ function createWindow() {
   // REMOVED: All auto-updater functionality disabled
 }
 
+// Set up error suppression before app is ready
+const originalEmit = process.emit;
+process.emit = function(event, ...args) {
+  if (event === 'unhandledRejection' && args[0] && args[0].message) {
+    const message = args[0].message;
+    if (message.includes('GUEST_VIEW_MANAGER_CALL') || message.includes('ERR_ABORTED')) {
+      // Log only unique errors to avoid spam
+      const errorKey = message.match(/loading '([^']+)'/)?.[1] || message;
+      if (!global.webviewErrorsSeen) {
+        global.webviewErrorsSeen = new Set();
+      }
+      if (!global.webviewErrorsSeen.has(errorKey)) {
+        global.webviewErrorsSeen.add(errorKey);
+        console.log(`[Browser] Site blocks embedded access: ${errorKey}`);
+      }
+      return true;
+    }
+  }
+  return originalEmit.apply(this, arguments);
+};
+
 app.whenReady().then(() => {
   createWindow();
 });
@@ -416,6 +438,27 @@ ipcMain.on('resize-shell', (event, data) => {
   }
 });
 
+// Terminal logging handler - logs from renderer to main terminal
+ipcMain.on('terminal-log', (event, data) => {
+  const { level, message, ...args } = data;
+  const timestamp = new Date().toISOString().substr(11, 8);
+  const prefix = `[${timestamp}] ${message}`;
+  
+  switch (level) {
+    case 'error':
+      console.error(prefix, ...Object.values(args));
+      break;
+    case 'warn':
+      console.warn(prefix, ...Object.values(args));
+      break;
+    case 'info':
+    case 'log':
+    default:
+      console.log(prefix, ...Object.values(args));
+      break;
+  }
+});
+
 app.commandLine.appendSwitch('disable-site-isolation-trials');
 app.commandLine.appendSwitch('js-flags', `--max-old-space-size=${MEMORY_LIMIT}`);
 app.commandLine.appendSwitch('max-memory', MEMORY_LIMIT);
@@ -424,9 +467,35 @@ app.commandLine.appendSwitch('renderer-js-flags', `--max-old-space-size=${MEMORY
 
 // Global error handlers
 process.on('uncaughtException', (error) => {
+  // Suppress repetitive webview navigation errors
+  if (error.message && error.message.includes('GUEST_VIEW_MANAGER_CALL')) {
+    // Log once per URL to avoid spam
+    const errorStr = error.toString();
+    const urlMatch = errorStr.match(/url: '([^']+)'/);
+    if (urlMatch) {
+      const url = urlMatch[1];
+      if (!global.suppressedWebviewErrors) {
+        global.suppressedWebviewErrors = new Set();
+      }
+      if (!global.suppressedWebviewErrors.has(url)) {
+        global.suppressedWebviewErrors.add(url);
+        console.log(`Webview blocked by site: ${url}`);
+      }
+    }
+    return;
+  }
   console.error('Unhandled Error: ', error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+  // Suppress webview-related promise rejections
+  if (reason && reason.toString().includes('ERR_ABORTED')) {
+    return;
+  }
+  // Suppress "Script failed to execute" errors from renderer
+  if (reason && reason.toString().includes('Script failed to execute')) {
+    console.log('[Renderer] Initialization warning (suppressed)');
+    return;
+  }
   console.error('Unhandled Promise Rejection: ', promise, ' reason: ', reason);
 });

@@ -47,19 +47,28 @@ class LLMApply {
     }
 
     try {
-      // Call the small model directly without streaming
-      const response = await chatController.smallModel.call({
+      // Create a new instance of the small model with a dummy stream callback
+      const ModelClass = chatController.smallModel.constructor;
+      const tempModel = new ModelClass({
+        ...chatController.smallModel,
+        apiKey: chatController.smallModel.client.apiKey,
+        baseUrl: chatController.smallModel.client.baseURL,
+        model: chatController.smallModel.model,
+        chatController: chatController,
+        streamCallback: () => {}, // Dummy callback since we don't need streaming
+        defaultHeaders: chatController.smallModel.client.defaultHeaders
+      });
+
+      // Call the model without streaming
+      const response = await tempModel.call({
         messages: messages,
         temperature: TEMPERATURE,
-        max_tokens: MAX_TOKENS,
-        stream: false
+        max_tokens: MAX_TOKENS
       });
 
       // Extract content from response
-      if (response.content) {
+      if (response && response.content) {
         return response.content;
-      } else if (response.choices && response.choices[0]) {
-        return response.choices[0].message.content;
       } else {
         throw new Error('Invalid response format from model');
       }

@@ -6,6 +6,7 @@ const fs = require('graceful-fs');
 const tokenizer = getEncoding('cl100k_base');
 const { relativePath } = require('./lib/fileOperations');
 const contextCache = require('./lib/context-cache');
+const { ipcRenderer } = require('electron');
 
 const MAX_ALLOWED_FILE_SIZE = 100000;
 
@@ -170,11 +171,46 @@ async function isFileEmpty(filePath) {
 }
 
 function log(...args) {
-      const isDevelopment = process.env.NODE_ENV === 'development';
-    if (isDevelopment) {
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
     console.log(...args);
   }
   chatController.chatLogs.push(args);
+}
+
+// Terminal logging function - sends logs to main process to appear in terminal
+function terminalLog(message, ...args) {
+  // Also log to console for dev tools
+  console.log(message, ...args);
+  
+  // Send to main process to appear in terminal
+  ipcRenderer.send('terminal-log', {
+    level: 'log',
+    message: message,
+    args: args
+  });
+}
+
+// Terminal error logging
+function terminalError(message, ...args) {
+  console.error(message, ...args);
+  
+  ipcRenderer.send('terminal-log', {
+    level: 'error',
+    message: message,
+    args: args
+  });
+}
+
+// Terminal warning logging
+function terminalWarn(message, ...args) {
+  console.warn(message, ...args);
+  
+  ipcRenderer.send('terminal-log', {
+    level: 'warn',
+    message: message,
+    args: args
+  });
 }
 
 function getTokenCount(content) {
@@ -216,6 +252,9 @@ module.exports = {
   withTimeout,
   withErrorHandling,
   log,
+  terminalLog,
+  terminalError,
+  terminalWarn,
   getSystemInfo,
   isTextFile,
   normalizedFilePath,

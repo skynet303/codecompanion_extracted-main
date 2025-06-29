@@ -7,7 +7,7 @@ const { WebLinksAddon } = require('@xterm/addon-web-links');
 const { Unicode11Addon } = require('@xterm/addon-unicode11');
 const { ipcRenderer, shell } = require('electron');
 const { debounce } = require('lodash');
-const { withTimeout, log } = require('../utils');
+const { withTimeout, log, terminalLog, terminalError } = require('../utils');
 const RealtimeTerminalMonitor = require('../lib/realtime-terminal-monitor');
 
 const isWindows = process.platform === 'win32';
@@ -24,12 +24,13 @@ class TerminalSession {
     this.shellType = null;
     this.needToUpdateWorkingDir = false;
     this.sendToChatButton = null;
-    this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 300);
+    this.debouncedSelectionHandler = this.debounce(this.handleSelectionChange.bind(this), 100);
     
     // Initialize missing properties that were causing the "push" error
     this.terminalSessionDataListeners = [];
-    this.endMarker = '<<<COMMAND_END>>>';
+    this.endMarker = '<<<COMMAND_END_' + Date.now() + '>>>';
     this.lastCommandAnalysis = null;
+    this.commandOutputCapture = null; // Track active command output capture
     
     // Initialize real-time monitor
     this.realtimeMonitor = new RealtimeTerminalMonitor();
@@ -139,7 +140,7 @@ class TerminalSession {
                       chatController.agent?.projectController?.currentProject?.path || 
                       process.cwd();
     
-    console.log('[Terminal] Starting shell in directory:', workingDir);
+    terminalLog('[Terminal] Starting shell in directory:', workingDir);
     
     ipcRenderer.send('start-shell', {
       cwd: workingDir,
@@ -148,8 +149,34 @@ class TerminalSession {
       this.shellType = data;
       this.setPrompt();
     });
+    // Keep track of shell data chunks for debugging
+    let shellDataCount = 0;
+    
     ipcRenderer.on('shell-data', (event, data) => {
+      shellDataCount++;
+      const dataStr = data.toString();
+      
+      // Debug: Log raw shell data with sequence number
+      terminalLog(`[Shell Data #${shellDataCount}]:`, dataStr.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\x1b/g, '\\x1b'));
+      
+      // Check what's in this chunk
+      if (dataStr.includes('<<<COMMAND_END')) {
+        terminalLog('[Shell Data] This chunk contains END MARKER');
+      }
+      if (dataStr.match(/^\/.*$/m)) {
+        terminalLog('[Shell Data] This chunk contains a PATH');
+      }
+      if (dataStr.match(/^(total|drwx|-.*)$/m)) {
+        terminalLog('[Shell Data] This chunk contains directory listing');
+      }
+      
+      // Write to terminal display
       this.writeToTerminal(data);
+      
+      // Also send to command output capture if active
+      if (this.commandOutputCapture) {
+        this.commandOutputCapture(data);
+      }
     });
     this.terminal.onData((data) => this.writeToShell(data));
     
@@ -286,6 +313,10 @@ class TerminalSession {
   }
 
   async executeShellCommand(command) {
+    // Debug: Check what command we received
+    terminalLog('[Terminal Session] Received command:', command);
+    terminalLog('[Terminal Session] Command type:', typeof command);
+    
     return new Promise((resolve, reject) => {
       let output = '';
       
@@ -309,25 +340,92 @@ class TerminalSession {
         fullCommand = `${command}; printf '%s\\n' '${this.endMarker}'`;
       }
       
-      console.log('[Terminal] Executing command:', fullCommand); // Debug log
+      terminalLog('[Terminal] Executing command:', fullCommand); // Debug log
       
-      // Display command in terminal and send to shell
-      this.terminal.write(fullCommand + '\r');
-      this.writeToShell(fullCommand + '\r');
-
-      const dataListener = (event, data) => {
+      // Set up command output capture
+      let allChunks = [];
+      let commandEchoComplete = false;
+      let lastChunkTime = Date.now();
+      
+      this.commandOutputCapture = (data) => {
         const chunk = data.toString();
-        output += chunk;
+        const chunkTime = Date.now();
+        allChunks.push({ data: chunk, time: chunkTime });
         
-        // Process output through real-time monitor
-        this.realtimeMonitor.processOutput(commandId, chunk);
+        // Debug: Log each chunk received
+        terminalLog('[Terminal] Chunk #' + allChunks.length + ':', chunk.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\x1b/g, '\\x1b'));
         
-        if (chunk.includes(this.endMarker)) {
-          // Remove this listener from IPC
-          ipcRenderer.removeListener('shell-data', dataListener);
+        // Build complete output
+        const allData = allChunks.map(c => c.data).join('');
+        const cleanData = this.removeASCII(allData);
+        
+        // Check if the command echo is complete (contains the full command including printf)
+        if (!commandEchoComplete && cleanData.includes(fullCommand)) {
+          commandEchoComplete = true;
+          terminalLog('[Terminal] Full command echo detected, waiting for output...');
+        }
+        
+        // Count how many times the end marker appears
+        const endMarkerCount = (cleanData.match(new RegExp(this.escapeRegExp(this.endMarker), 'g')) || []).length;
+        terminalLog('[Terminal] End marker count:', endMarkerCount);
+        
+        // We need at least 2 occurrences: one in echo, one from actual execution
+        // OR if enough time has passed since command echo
+        const timeSinceLastChunk = chunkTime - lastChunkTime;
+        const enoughTimePassed = commandEchoComplete && timeSinceLastChunk > 100;
+        
+        if (commandEchoComplete && (endMarkerCount >= 2 || (endMarkerCount >= 1 && enoughTimePassed))) {
+          terminalLog('[Terminal] Processing complete output...');
           
-          output = output.slice(0, output.lastIndexOf(this.endMarker));
-          output = this.postProcessOutput(output, command, executeTimeStamp);
+          // Clear the command output capture
+          this.commandOutputCapture = null;
+          
+          // Split into lines and process
+          const lines = cleanData.split(/\r?\n/);
+          const outputLines = [];
+          let skipNextLines = 0;
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (skipNextLines > 0) {
+              skipNextLines--;
+              continue;
+            }
+            
+            // Skip empty lines
+            if (!line) continue;
+            
+            // Skip the command echo line (which includes the full command with printf)
+            if (line.includes(fullCommand) || line.includes(`${command}; printf`)) {
+              terminalLog('[Terminal] Skipping command echo line:', line);
+              // Also skip the next line if it's just control characters
+              if (i + 1 < lines.length && lines[i + 1].trim().match(/^\??\d{4}[lh]?$/)) {
+                skipNextLines = 1;
+              }
+              continue;
+            }
+            
+            // Skip standalone end markers
+            if (line === this.endMarker) {
+              terminalLog('[Terminal] Skipping standalone end marker');
+              break;
+            }
+            
+            // Skip terminal control sequences
+            if (line.match(/^\??\d{4}[lh]?$/)) {
+              continue;
+            }
+            
+            // This is actual output
+            outputLines.push(line);
+          }
+          
+          const finalOutput = outputLines.join('\n').trim();
+          
+          terminalLog('[Terminal] Total chunks:', allChunks.length);
+          terminalLog('[Terminal] Output lines:', outputLines);
+          terminalLog('[Terminal] Final output:', finalOutput || '(empty output)');
           
           // Complete monitoring and get final analysis
           const analysis = this.realtimeMonitor.completeMonitoring(commandId);
@@ -335,22 +433,38 @@ class TerminalSession {
           // Store the analysis for later retrieval
           this.lastCommandAnalysis = analysis;
           
-          resolve(output);
+          resolve(finalOutput);
         }
+        
+        lastChunkTime = chunkTime;
+        
+        // Process output through real-time monitor
+        this.realtimeMonitor.processOutput(commandId, chunk);
       };
-
-      // Listen to shell output via IPC
-      ipcRenderer.on('shell-data', dataListener);
+      
+      // Send command to shell for execution
+      this.writeToShell(fullCommand + '\r');
+      
+      // Small delay to ensure command is processed before we start capturing
+      setTimeout(() => {
+        terminalLog('[Terminal] Command should be executing now');
+      }, 100);
       
       // Timeout handling with monitoring cleanup
       setTimeout(() => {
-        // Remove the IPC listener
-        ipcRenderer.removeListener('shell-data', dataListener);
+        // Clear the command output capture
+        this.commandOutputCapture = null;
         
-        // Abort monitoring on timeout
-        this.realtimeMonitor.abortMonitoring(commandId);
-        
-        reject(new Error('Command execution timeout'));
+        // If we have output but didn't detect end marker, still return what we have
+        if (output && output.length > 0) {
+          terminalLog('[Terminal] Timeout reached but have output, returning what we collected');
+          output = this.postProcessOutput(output, command, executeTimeStamp);
+          resolve(output);
+        } else {
+          // Abort monitoring on timeout
+          this.realtimeMonitor.abortMonitoring(commandId);
+          reject(new Error('Command execution timeout'));
+        }
       }, 30000); // 30 second timeout
     });
   }
@@ -382,10 +496,43 @@ class TerminalSession {
     // Remove terminal control characters and clean up output
     let cleanOutput = this.removeASCII(output);
     
-    // Remove the command echo from the beginning if present
+    // Debug: Log what we're processing
+    terminalLog('[Terminal] PostProcess - Raw output:', cleanOutput.replace(/\n/g, '\\n').replace(/\r/g, '\\r'));
+    
+    // Remove the full command echo (including our printf addition) from the beginning
+    // The output might contain: "command; printf '%s\n' '<<<COMMAND_END>>>'\r\n[actual output]"
+    const fullCommandPattern = new RegExp(`^${this.escapeRegExp(command)}.*?${this.escapeRegExp(this.endMarker)}.*?\\r?\\n`, 's');
+    cleanOutput = cleanOutput.replace(fullCommandPattern, '');
+    
+    // Also try to remove just the command echo if it appears at the start
     if (cleanOutput.startsWith(command)) {
       cleanOutput = cleanOutput.substring(command.length);
     }
+    
+    // Remove any remaining command echo that might appear
+    const lines = cleanOutput.split(/\r?\n/);
+    const filteredLines = [];
+    let foundOutput = false;
+    
+    for (const line of lines) {
+      // Skip lines that are just our command echo or printf command
+      if (!foundOutput && (line.includes(command) || line.includes('printf') || line.includes(this.endMarker))) {
+        // Check if this line also contains actual output after the command
+        const commandIndex = line.indexOf(command);
+        if (commandIndex >= 0) {
+          const afterCommand = line.substring(commandIndex + command.length).trim();
+          if (afterCommand && !afterCommand.includes('printf') && !afterCommand.includes(this.endMarker)) {
+            filteredLines.push(afterCommand);
+            foundOutput = true;
+          }
+        }
+        continue;
+      }
+      filteredLines.push(line);
+      foundOutput = true;
+    }
+    
+    cleanOutput = filteredLines.join('\n');
     
     // Remove leading/trailing whitespace
     cleanOutput = cleanOutput.trim();
@@ -396,7 +543,13 @@ class TerminalSession {
       console.log(`Command '${command}' took ${duration}ms to execute`);
     }
     
+    terminalLog('[Terminal] PostProcess - Final output:', cleanOutput);
+    
     return cleanOutput;
+  }
+  
+  escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   async navigateToDirectory(dir) {

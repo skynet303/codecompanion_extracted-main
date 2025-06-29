@@ -17,9 +17,9 @@ const { MODEL_OPTIONS } = require('./app/static/models_config');
 const localStorage = new ElectronStore();
 const cache = new Map();
 // const authController = new AuthController(); // REMOVED: Auth disabled
-const chatController = new ChatController();
-const viewController = new ViewController();
-const onboardingController = new OnboardingController();
+let chatController; // Will be initialized after DOM is ready
+let viewController; // Will be initialized after DOM is ready  
+let onboardingController; // Will be initialized after DOM is ready
 
 // let authModal; // REMOVED: Auth disabled
 let isAuthCheckComplete = false;
@@ -38,7 +38,7 @@ ipcRenderer.on('read-files', async (event, file) => {
 
 ipcRenderer.on('directory-data', async (event, file) => {
   const { filePaths } = file;
-  if (filePaths.length > 0) {
+  if (filePaths.length > 0 && chatController) {
     chatController.agent.projectController.openProject(filePaths[0]);
   }
 });
@@ -54,72 +54,90 @@ ipcRenderer.on('file-error', (event, errMessage) => {
 });
 
 ipcRenderer.on('save-shortcut-triggered', () => {
-  chatController.chat.history.showModal();
+  if (chatController) {
+    chatController.chat.history.showModal();
+  }
 });
 
 ipcRenderer.on('refresh-browser', () => {
-  chatController.browser.reload();
+  if (chatController) {
+    chatController.browser.reload();
+  }
 });
 
 ipcRenderer.on('open-url-in-browser', (event, url) => {
-  chatController.browser.loadUrl(url);
+  if (chatController) {
+    chatController.browser.loadUrl(url);
+  }
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize controllers after DOM is ready
+  chatController = new ChatController();
+  viewController = new ViewController();
+  onboardingController = new OnboardingController();
+  
+  // Initialize UI components that depend on DOM
+  chatController.initializeUIComponents();
+  
+  // Set up event listeners that depend on DOM elements
+  const debouncedSubmit = debounce(chatController.processMessageChange, 100);
+  document.getElementById('messageInput').addEventListener('keydown', debouncedSubmit);
+  
+  document.getElementById('reject_button').addEventListener('click', function () {
+    chatController.agent.userDecision = 'reject';
+  });
+
+  document.getElementById('approve_button').addEventListener('click', function () {
+    chatController.agent.userDecision = 'approve';
+  });
+
+  document.getElementById('approve_and_pause_button').addEventListener('click', function () {
+    chatController.agent.userDecision = 'approve_and_pause';
+  });
+  
+  // Set up paste handler
+  document.getElementById('messageInput').addEventListener('paste', function(event) {
+    event.preventDefault();
+    
+    const clipboardData = event.clipboardData || window.clipboardData;
+    const pastedText = clipboardData.getData('text');
+    
+    if (pastedText && pastedText.trim()) {
+      const textarea = event.target;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      
+      const formattedText = pastedText.includes('\n') ? `\`\`\`\n${pastedText}\n\`\`\`` : pastedText;
+      const newValue = currentValue.substring(0, start) + formattedText + currentValue.substring(end);
+      
+      textarea.value = newValue;
+      
+      const newCursorPosition = start + formattedText.length;
+      textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+      
+      const autosize = require('autosize');
+      autosize.update(textarea);
+    }
+  });
+  
   // Authentication bypassed - initialize app directly
   isAuthCheckComplete = true;
   initializeApp();
 });
 
 ipcRenderer.on('download-logs', () => {
-  const chatLogs = chatController.chatLogs;
-  const chatLogsData = JSON.stringify(chatLogs, null, 2);
-  const blob = new Blob([chatLogsData], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'chat_logs.json';
-  link.click();
-});
-
-const debouncedSubmit = debounce(chatController.processMessageChange, 100);
-document.getElementById('messageInput').addEventListener('keydown', debouncedSubmit);
-
-document.getElementById('messageInput').addEventListener('paste', function(event) {
-  event.preventDefault();
-  
-  const clipboardData = event.clipboardData || window.clipboardData;
-  const pastedText = clipboardData.getData('text');
-  
-  if (pastedText && pastedText.trim()) {
-    const textarea = event.target;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentValue = textarea.value;
-    
-    const formattedText = pastedText.includes('\n') ? `\`\`\`\n${pastedText}\n\`\`\`` : pastedText;
-    const newValue = currentValue.substring(0, start) + formattedText + currentValue.substring(end);
-    
-    textarea.value = newValue;
-    
-    const newCursorPosition = start + formattedText.length;
-    textarea.setSelectionRange(newCursorPosition, newCursorPosition);
-    
-    const autosize = require('autosize');
-    autosize.update(textarea);
+  if (chatController) {
+    const chatLogs = chatController.chatLogs;
+    const chatLogsData = JSON.stringify(chatLogs, null, 2);
+    const blob = new Blob([chatLogsData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'chat_logs.json';
+    link.click();
   }
-});
-
-document.getElementById('reject_button').addEventListener('click', function () {
-  chatController.agent.userDecision = 'reject';
-});
-
-document.getElementById('approve_button').addEventListener('click', function () {
-  chatController.agent.userDecision = 'approve';
-});
-
-document.getElementById('approve_and_pause_button').addEventListener('click', function () {
-  chatController.agent.userDecision = 'approve_and_pause';
 });
 
 // Open links in actual web browser not in app
