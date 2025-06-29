@@ -3,11 +3,14 @@ const fs = require('graceful-fs');
 const pathModule = require('path');
 const JSONStream = require('JSONStream');
 const { app } = require('@electron/remote');
-
-const saveChatModal = new bootstrap.Modal(document.getElementById('saveChatModal'));
+const { encode } = require('html-entities');
+const marked = require('marked');
+const ElectronStore = require('electron-store');
+const localStorage = new ElectronStore();
 
 class ChatHistory {
   constructor() {
+    this.saveChatModal = null; // Will be initialized when needed
     this.historyPath = pathModule.join(app.getPath('userData'), 'chat_history.json');
     this.chatHistory = {};
     this.migrateFromLocalStorage();
@@ -95,7 +98,7 @@ class ChatHistory {
 
     this.chatHistory[id] = record;
     await this.saveToFile(this.chatHistory);
-    saveChatModal.hide();
+    this.getSaveChatModal().hide();
     viewController.updateFooterMessage('Chat saved.');
   }
 
@@ -172,10 +175,17 @@ class ChatHistory {
       viewController.updateFooterMessage('Nothing to save.');
       return;
     }
-    saveChatModal.show();
+    this.getSaveChatModal().show();
     const chatTitleInput = document.getElementById('chatTitle');
     chatTitleInput.value = chatController.chat.taskTitle || '';
     chatTitleInput.focus();
+  }
+
+  getSaveChatModal() {
+    if (!this.saveChatModal) {
+      this.saveChatModal = new bootstrap.Modal(document.getElementById('saveChatModal'));
+    }
+    return this.saveChatModal;
   }
 }
 

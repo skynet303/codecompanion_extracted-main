@@ -1,8 +1,26 @@
 const { tools } = require('./tools');
 const { log } = require('../../utils');
 
-// Simple in-memory cache for research results
-const cache = new Map();
+// Create a dedicated cache Map for research results with 10 minute TTL
+const researchCache = new Map();
+const RESEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+// Helper functions for research cache
+const getCacheValue = (key) => {
+  const cached = researchCache.get(key);
+  if (cached && Date.now() < cached.expiry) {
+    return cached.value;
+  }
+  researchCache.delete(key);
+  return null;
+};
+
+const setCacheValue = (key, value) => {
+  researchCache.set(key, {
+    value,
+    expiry: Date.now() + RESEARCH_CACHE_TTL
+  });
+};
 
 const MAX_STEPS = 2;
 
@@ -36,11 +54,22 @@ class ResearchAgent {
   constructor(chatController, taskDescription) {
     this.chatController = chatController;
     this.taskDescription = taskDescription;
+    this.progressCallback = null;
   }
 
-  async executeResearch(researchItem, taskContext) {
-    if (researchItem.cache && this.getCache(researchItem.name)) {
-      return this.getCache(researchItem.name);
+  async executeResearch(researchItem, taskContext, progressCallback = null) {
+    this.progressCallback = progressCallback;
+    
+    // Generate cache key including task context for uniqueness
+    const cacheKey = this.generateCacheKey(researchItem, taskContext);
+    
+    if (researchItem.cache) {
+      const cachedResult = getCacheValue(cacheKey);
+      if (cachedResult) {
+        console.log(`Using cached result for research item: ${researchItem.name}`);
+        this._notifyProgress(`Using cached result for: ${researchItem.name}`);
+        return cachedResult;
+      }
     }
     this.taskContext = taskContext;
 
@@ -60,6 +89,7 @@ class ResearchAgent {
     const maxSteps = researchItem.maxSteps || MAX_STEPS;
 
     for (let i = 0; i < maxSteps; i++) {
+      this._notifyProgress(`Research step ${i + 1}/${maxSteps}: ${researchItem.name}`);
       log('ResearchAgent:');
       const callParams = {
         messages,
@@ -73,20 +103,41 @@ class ResearchAgent {
         callParams.tools = formattedTools;
         callParams.tool_choice = 'required';
       }
-      const response = await this.model.call(callParams);
-      if (response.tool_calls) {
-        const result = await this.handleToolCalls(response.tool_calls, availableTools, messages);
-        if (result) {
-          if (researchItem.cache) {
-            this.setCache(researchItem.name, result);
+      try {
+        const response = await this.model.call(callParams);
+        if (response.tool_calls) {
+          const result = await this.handleToolCalls(response.tool_calls, availableTools, messages);
+          if (result) {
+            if (researchItem.cache) {
+              setCacheValue(cacheKey, result);
+            }
+            return result;
           }
-          return result;
+        } else if (response.content) {
+          messages.push({
+            role: 'assistant',
+            content: response.content,
+          });
         }
-      } else if (response.content) {
-        messages.push({
-          role: 'assistant',
-          content: response.content,
-        });
+      } catch (error) {
+        console.error(`Research step ${i + 1} failed:`, error);
+        this._notifyProgress(`Error in step ${i + 1}: ${error.message}`);
+        
+        // Retry logic for specific errors
+        if (this._isRetryableError(error) && i < maxSteps - 1) {
+          this._notifyProgress(`Retrying step ${i + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+          continue;
+        }
+        
+        // For final step or non-retryable errors, return partial result
+        if (i === maxSteps - 1) {
+          return {
+            error: `Research failed: ${error.message}`,
+            partial: true,
+            completedSteps: i
+          };
+        }
       }
     }
     return null;
@@ -146,24 +197,48 @@ class ResearchAgent {
   async executeToolAndUpdateMessages(toolCall, availableTools, messages) {
     const tool = availableTools.find((t) => t.name === toolCall.function.name);
     if (tool && tool.executeFunction) {
-      const result = await tool.executeFunction(toolCall.function.arguments);
-      messages.push({
-        role: 'assistant',
-        content: null,
-        tool_calls: [{
-          id: toolCall.id,
-          type: 'function',
-          function: {
-            name: toolCall.function.name,
-            arguments: toolCall.function.arguments,
-          },
-        }],
-      });
-      messages.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: result,
-      });
+      try {
+        const result = await tool.executeFunction(toolCall.function.arguments);
+        messages.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: toolCall.id,
+            type: 'function',
+            function: {
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments,
+            },
+          }],
+        });
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: result,
+        });
+      } catch (error) {
+        console.error(`Tool ${tool.name} failed:`, error);
+        this._notifyProgress(`Tool ${tool.name} failed: ${error.message}`);
+        
+        // Add error message to conversation for model awareness
+        messages.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: toolCall.id,
+            type: 'function',
+            function: {
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments,
+            },
+          }],
+        });
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: `Error: ${error.message}. Please try a different approach or tool.`,
+        });
+      }
     }
   }
 
@@ -203,14 +278,47 @@ class ResearchAgent {
     return `<potentiallyRelevantFiles>\n${potentiallyRelevantFiles.join('\n')}\n</potentiallyRelevantFiles>`;
   }
 
-  setCache(key, value) {
-    const projectKey = this.chatController.agent.projectController.currentProject.path + '-' + key;
-    cache.set(projectKey, value);
+  generateCacheKey(researchItem, taskContext) {
+    // Create a unique cache key based on research item and context
+    const crypto = require('crypto');
+    const projectPath = this.chatController.agent.projectController.currentProject.path;
+    const contextHash = taskContext ? 
+      crypto.createHash('md5').update(JSON.stringify(taskContext)).digest('hex').slice(0, 8) : 
+      'no-context';
+    return `${projectPath}:${researchItem.name}:${contextHash}`;
   }
 
-  getCache(key) {
-    const projectKey = this.chatController.agent.projectController.currentProject.path + '-' + key;
-    return cache.get(projectKey);
+  // Get cache statistics for debugging
+  getCacheStats() {
+    return {
+      size: researchCache.size,
+      entries: Array.from(researchCache.keys())
+    };
+  }
+
+  _notifyProgress(message) {
+    if (this.progressCallback) {
+      this.progressCallback(message);
+    }
+    // Also try to notify via frontend if available
+    if (this.chatController?.chat?.addFrontendMessage) {
+      this.chatController.chat.addFrontendMessage('info', `🔍 ${message}`);
+    }
+  }
+
+  _isRetryableError(error) {
+    // Define retryable error conditions
+    const retryableMessages = [
+      'timeout',
+      'network',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'rate limit',
+      'too many requests'
+    ];
+    
+    const errorMessage = (error.message || '').toLowerCase();
+    return retryableMessages.some(msg => errorMessage.includes(msg));
   }
 
   isWebResearchTask(researchItem) {

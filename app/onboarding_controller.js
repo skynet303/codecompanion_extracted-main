@@ -1,24 +1,35 @@
-const helpModal = new bootstrap.Modal(document.getElementById('helpMessage'));
 const onboardingSteps = require('./static/onboarding_steps');
+
+/**
+ * Generates the tips content as HTML
+ */
+function generateTips() {
+  // ... existing code ...
+}
 
 class OnboardingController {
   constructor(steps = onboardingSteps) {
+    this.currentStepIndex = 0;
     this.steps = steps || [];
     this.showingId = null;
+    this.markedAsSeen = false;
+    this.helpModal = null; // Will be initialized when needed
   }
 
   hasBeenShown(id) {
     return localStorage.get(`onboarding.${id}`, false);
   }
 
+  isValidStep(step) {
+    const selector = step.selector;
+    const element = document.querySelector(selector);
+    return !!element;
+  }
+
   markAsRead() {
     localStorage.set(`onboarding.${this.showingId}`, true);
     this.hideModal();
     this.showingId = null;
-  }
-
-  isValidStep(step, ignoreCondition = false) {
-    return !this.hasBeenShown(step.id) && (step.condition() || ignoreCondition);
   }
 
   showAllTips() {
@@ -32,13 +43,22 @@ class OnboardingController {
   }
 
   showModal(content) {
-    helpModal.show();
+    this.getHelpModal().show();
     document.getElementById('helpMessageContent').innerHTML = content;
   }
 
   hideModal() {
     document.getElementById('helpMessageContent').innerHTML = '';
-    helpModal.hide();
+    if (this.helpModal) {
+      this.helpModal.hide();
+    }
+  }
+
+  getHelpModal() {
+    if (!this.helpModal) {
+      this.helpModal = new bootstrap.Modal(document.getElementById('helpMessage'));
+    }
+    return this.helpModal;
   }
 
   showSpecificTips(ids) {

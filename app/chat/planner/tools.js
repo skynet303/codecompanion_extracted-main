@@ -3,6 +3,7 @@ const { normalizedFilePath } = require('../../utils');
 const CoEditedFilesFinder = require('../../lib/CoEditedFiles');
 const GoogleSearch = require('../../tools/google_search');
 const { contextualCompress } = require('../../tools/contextual_compressor');
+const EnhancedSearchCore = require('../../tools/enhanced_search_core');
 const MAX_FILE_SIZE = 50 * 1024; // 50 KB
 
 const toolDefinitions = [
@@ -124,29 +125,57 @@ async function searchCode({ query, filenamesOnly = false }) {
   return `No results found`;
 }
 
-// Add web search functionality
+// Add web search functionality with enhanced search support
 async function webSearch({ query }) {
   try {
-    const searchAPI = new GoogleSearch();
-    // Get up to 30 results for research tasks
-    const searchResults = await searchAPI.searchWithPagination(query, 30);
+    // Try to get Serper API key from environment or settings
+    const serperApiKey = process.env.SERPER_API_KEY || 
+                        global.chatController?.settings?.serperApiKey;
     
-    if (!searchResults || searchResults.length === 0) {
+    // Create enhanced search with optional Serper support
+    const searchAPI = new EnhancedSearchCore({
+      serperApiKey: serperApiKey,
+      progressCallback: (message) => {
+        if (message) console.log(`Search progress: ${message}`);
+      }
+    });
+    
+    // Use smart search to get scored and processed results
+    const searchResults = await searchAPI.smartSearch(query, { maxResults: 100 });
+    
+    if (!searchResults || !searchResults.results || searchResults.results.length === 0) {
       return JSON.stringify({ error: 'No search results found' });
     }
     
-    // Return raw search results without browser checking for now
-    // This avoids the dependency on browser in research context
-    const results = searchResults.slice(0, 10).map(result => ({
-      url: result.link,
-      title: result.title,
-      snippet: result.snippet || ''
-    }));
+    // Format results for the research agent
+    const formattedResults = searchResults.results.slice(0, 100).map((result, index) => {
+      const formatted = {
+        url: result.link || '',
+        title: result.title || '',
+        snippet: result.snippet || '',
+        type: result.type || 'organic',
+        position: index + 1
+      };
+      
+      // Include additional data for special result types
+      if (result.type === 'answer_box' || result.type === 'knowledge_graph') {
+        formatted.relevanceScore = result.relevanceScore || 2.0;
+        if (result.attributes) {
+          formatted.attributes = result.attributes;
+        }
+      }
+      
+      return formatted;
+    });
     
     return JSON.stringify({
-      results: results,
-      totalSearched: searchResults.length,
-      query: query
+      results: formattedResults,
+      totalSearched: searchResults.totalResults,
+      query: query,
+      provider: searchResults.provider,
+      hasAnswerBox: searchResults.hasAnswerBox,
+      hasKnowledgeGraph: searchResults.hasKnowledgeGraph,
+      capabilities: searchAPI.getCapabilities()
     });
   } catch (error) {
     console.error('Error in web search:', error);

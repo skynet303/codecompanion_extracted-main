@@ -10,7 +10,6 @@ const ResearchAgent = require('./chat/planner/researchAgent');
 const { researchItems } = require('./chat/planner/researchItems');
 const LARGE_FILE_SIZE = 50000;
 const PROJECT_STRUCTURE_ROWS_COUNT = 50;
-const addInstructionsModal = new bootstrap.Modal(document.getElementById('addInstructionsModal'));
 
 class ProjectController {
   constructor(currentProject) {
@@ -20,6 +19,7 @@ class ProjectController {
     this.filesList = [];
     this.shadowGit = null;
     this.projectOverview = null;
+    this.addInstructionsModal = null; // Will be initialized when needed
   }
 
   async openProject(path) {
@@ -138,7 +138,11 @@ class ProjectController {
     let project = this.projects.find((project) => project.path === path);
 
     if (project) {
-      addInstructionsModal.show();
+      // Lazy load the modal when first needed
+      if (!this.addInstructionsModal) {
+        this.addInstructionsModal = new bootstrap.Modal(document.getElementById('addInstructionsModal'));
+      }
+      this.addInstructionsModal.show();
       let instructions = localStorage.get(`project.${project.name}.instructions`, '');
       document.getElementById('customInstructions').value = instructions;
       this.instructionsProjectName = project.name;
@@ -150,7 +154,9 @@ class ProjectController {
   saveInstructions() {
     const instructions = document.getElementById('customInstructions').value;
     localStorage.set(`project.${this.instructionsProjectName}.instructions`, instructions);
-    addInstructionsModal.hide();
+    if (this.addInstructionsModal) {
+      this.addInstructionsModal.hide();
+    }
   }
 
   getCustomInstructions() {

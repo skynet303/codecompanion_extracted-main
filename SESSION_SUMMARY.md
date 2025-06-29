@@ -3,6 +3,7 @@
 ## Problem Identified
 The research agent was experiencing an infinite loop when tasked with web-based research. The AI would repeatedly attempt to explore project files using `ls -R` commands instead of performing the requested web searches. This occurred because:
 
+
 1. The research agent only had access to project-specific tools (`read_files`, `search_codebase`)
 2. No web search tools were available in the planner tools module
 3. The system prompt didn't distinguish between web research and project research contexts

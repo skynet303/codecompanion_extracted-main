@@ -52,6 +52,7 @@
     "diff": "^5.2.0",
     "diff2html": "^3.4.48",
     "dompurify": "^3.2.3",
+    "electron": "^22.3.27",
     "electron-localshortcut": "^3.2.1",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.1.7",
@@ -73,6 +74,7 @@
     "lodash": "^4.17.21",
     "marked": "^13.0.3",
     "marked-highlight": "^2.1.0",
+    "node-pty": "^1.0.0",
     "openai": "^4.83.0",
     "read-chunk": "^3.2.0",
     "simple-git": "^3.27.0",
@@ -80,7 +82,7 @@
     "voyageai": "^0.0.3-1"
   },
   "devDependencies": {
-    "electron": "^28.0.0",
+    "@electron/rebuild": "^3.7.2",
     "electron-rebuild": "^3.2.9"
   }
 }
